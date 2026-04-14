@@ -7,8 +7,23 @@ from sklearn.ensemble import RandomForestRegressor
 
 st.set_page_config(page_title="GBK Marketing Insights Suite", layout="wide")
 
+# =========================================================
+# Session State
+# =========================================================
 if "page" not in st.session_state:
     st.session_state.page = "dashboard"
+
+if "uploaded_df_raw" not in st.session_state:
+    st.session_state.uploaded_df_raw = None
+
+if "uploaded_df_num" not in st.session_state:
+    st.session_state.uploaded_df_num = None
+
+if "uploaded_meta" not in st.session_state:
+    st.session_state.uploaded_meta = None
+
+if "uploaded_filename" not in st.session_state:
+    st.session_state.uploaded_filename = None
 
 # =========================================================
 # GBK Brand Styling
@@ -34,7 +49,6 @@ html, body, [class*="css"] {
     max-width: 100% !important;
 }
 
-/* ---------- NAV ---------- */
 .gbk-topbar {
     background: #1a202c;
     border-bottom: 1px solid rgba(255,255,255,0.08);
@@ -100,7 +114,6 @@ div[data-testid="stButton"] > button[kind="secondary"]:hover {
     color: white !important;
 }
 
-/* ---------- HERO ---------- */
 .gbk-hero {
     background: #1a202c;
     padding: 3rem 2.5rem 2.5rem;
@@ -135,7 +148,6 @@ div[data-testid="stButton"] > button[kind="secondary"]:hover {
     margin: 0;
 }
 
-/* ---------- CONTENT ---------- */
 .gbk-content {
     padding: 2rem 2.5rem;
 }
@@ -187,12 +199,6 @@ div[data-testid="stButton"] > button[kind="secondary"]:hover {
     font-style: italic;
 }
 
-.gbk-microcopy {
-    font-size: 13px;
-    color: rgba(255,255,255,0.55);
-    line-height: 1.7;
-}
-
 .gbk-card-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -230,7 +236,6 @@ div[data-testid="stButton"] > button[kind="secondary"]:hover {
     line-height: 1.2;
 }
 
-/* ---------- STREAMLIT INPUTS ---------- */
 div[data-testid="stSelectbox"] > div > div {
     background: #1a202c !important;
     border: 1px solid rgba(255,255,255,0.12) !important;
@@ -292,6 +297,12 @@ pre, code {
     background: rgba(0,0,0,0.3) !important;
     color: rgba(255,255,255,0.75) !important;
     border-radius: 6px !important;
+}
+
+@media (max-width: 1100px) {
+    .gbk-card-grid {
+        grid-template-columns: 1fr;
+    }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -410,7 +421,7 @@ def prepare_model_data(df: pd.DataFrame):
     return df, df_num, meta
 
 def render_bar_chart(top5: pd.Series):
-    max_val = top5.iloc[0]
+    max_val = top5.iloc[0] if len(top5) > 0 else 0
     bars_html = ""
     for i, (col, val) in enumerate(top5.items()):
         color = BAR_COLORS[i] if i < len(BAR_COLORS) else BAR_COLORS[-1]
@@ -431,12 +442,14 @@ def render_bar_chart(top5: pd.Series):
       {bars_html}
       <div class="gbk-disclaimer">Longer bar = stronger model-based importance. These are directional patterns, not proof of causality.</div>
     </div>
-    """, height=60 + len(top5) * 44)
+    """, height=60 + max(1, len(top5)) * 44)
 
 def render_insights(target: str, top5: pd.Series):
     names = [display_name(x) for x in top5.index.tolist()]
-    t_label = display_name(target)
+    if not names:
+        return
 
+    t_label = display_name(target)
     second = names[1] if len(names) > 1 else names[0]
     third = names[2] if len(names) > 2 else second
     fourth = names[3] if len(names) > 3 else third
@@ -463,8 +476,10 @@ def render_insights(target: str, top5: pd.Series):
 
 def render_next_steps(target: str, top5: pd.Series):
     names = [display_name(x) for x in top5.index.tolist()]
-    t_label = display_name(target)
+    if not names:
+        return
 
+    t_label = display_name(target)
     second = names[1] if len(names) > 1 else names[0]
     third = names[2] if len(names) > 2 else second
     fourth = names[3] if len(names) > 3 else third
@@ -509,6 +524,15 @@ def pill_list(items):
         for x in items
     )
 
+def clear_uploaded_data():
+    st.session_state.uploaded_df_raw = None
+    st.session_state.uploaded_df_num = None
+    st.session_state.uploaded_meta = None
+    st.session_state.uploaded_filename = None
+
+# =========================================================
+# UI Renderers
+# =========================================================
 def render_nav():
     st.markdown('<div class="gbk-topbar">', unsafe_allow_html=True)
     col_logo, col_nav = st.columns([2.5, 7.5])
@@ -534,12 +558,11 @@ def render_nav():
 
         for col, (label, key) in zip(nav_cols, labels):
             with col:
-                is_active = current == key
                 if st.button(
                     label,
                     key=f"nav_{key}",
                     use_container_width=True,
-                    type="primary" if is_active else "secondary"
+                    type="primary" if current == key else "secondary"
                 ):
                     st.session_state.page = key
                     st.rerun()
@@ -574,14 +597,19 @@ def render_dashboard():
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("""
-    <div class="gbk-panel">
-      <div class="gbk-panel-title">What this tool does</div>
-      <div class="gbk-note">
-        Use this workspace to upload survey-based datasets, identify the variables most associated with brand or experience outcomes, and translate coded fields into business-readable insights for client teams.
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+    if st.session_state.uploaded_df_raw is not None:
+        df_raw = st.session_state.uploaded_df_raw
+        df_num = st.session_state.uploaded_df_num
+        st.markdown(f"""
+        <div class="gbk-panel">
+          <div class="gbk-panel-title">Current dataset</div>
+          <div class="gbk-note">
+            <b>{st.session_state.uploaded_filename}</b> is currently loaded. The active dataset contains
+            <b>{df_raw.shape[0]:,}</b> respondents, <b>{df_raw.shape[1]:,}</b> total columns, and
+            <b>{df_num.shape[1]:,}</b> model-ready numeric variables.
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     st.markdown("""
     <div class="gbk-card-grid">
@@ -618,7 +646,25 @@ def render_driver_analysis():
 
     uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"], key="driver_upload")
 
-    if uploaded_file is None:
+    if uploaded_file is not None:
+        try:
+            df_raw = pd.read_excel(uploaded_file)
+            df_raw, df_num, meta = prepare_model_data(df_raw)
+
+            st.session_state.uploaded_df_raw = df_raw
+            st.session_state.uploaded_df_num = df_num
+            st.session_state.uploaded_meta = meta
+            st.session_state.uploaded_filename = uploaded_file.name
+
+        except Exception as e:
+            st.error(f"Error loading data: {e}")
+
+    df_raw = st.session_state.uploaded_df_raw
+    df_num = st.session_state.uploaded_df_num
+    meta = st.session_state.uploaded_meta
+    uploaded_filename = st.session_state.uploaded_filename
+
+    if df_raw is None or df_num is None or meta is None:
         st.markdown("""
         <div class="gbk-upload-box">
           <div class="gbk-section-label">Upload dataset</div>
@@ -630,119 +676,131 @@ def render_driver_analysis():
         </div>
         """, unsafe_allow_html=True)
     else:
-        try:
-            df_raw = pd.read_excel(uploaded_file)
-            df_raw, df_num, meta = prepare_model_data(df_raw)
+        top_left, top_right = st.columns([5, 1])
 
+        with top_left:
+            st.markdown(f"""
+            <div class="gbk-upload-box">
+              <div class="gbk-section-label">Current dataset</div>
+              <div class="gbk-note">
+                <b>{uploaded_filename}</b> is loaded and ready for analysis.
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with top_right:
+            st.write("")
+            st.write("")
+            if st.button("Clear Dataset", key="clear_dataset_btn"):
+                clear_uploaded_data()
+                st.rerun()
+
+        components.html(PANEL_CSS + f"""
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px;">
+          <div class="gbk-panel" style="margin-bottom:0;">
+            <div class="gbk-panel-title">Respondents</div>
+            <div style="font-size:32px; font-weight:800; color:white; line-height:1;">{df_raw.shape[0]:,}</div>
+          </div>
+          <div class="gbk-panel" style="margin-bottom:0;">
+            <div class="gbk-panel-title">Total Columns</div>
+            <div style="font-size:32px; font-weight:800; color:white; line-height:1;">{df_raw.shape[1]:,}</div>
+          </div>
+          <div class="gbk-panel" style="margin-bottom:0;">
+            <div class="gbk-panel-title">Model-Ready</div>
+            <div style="font-size:32px; font-weight:800; color:white; line-height:1;">{df_num.shape[1]:,}</div>
+          </div>
+        </div>
+        <div style="background:rgba(232,80,58,0.07); border:1px solid rgba(232,80,58,0.2); border-radius:8px; padding:0.875rem 1.25rem; font-size:13px; color:rgba(255,255,255,0.55); line-height:1.7;">
+          <b style="color:#E8503A; font-weight:600;">Automated data prep:</b>
+          ID / date / meta fields excluded &nbsp;·&nbsp;
+          structurally empty columns dropped &nbsp;·&nbsp;
+          subgroup-driven sparse variables flagged separately &nbsp;·&nbsp;
+          remaining gaps filled with median &nbsp;·&nbsp;
+          constant columns dropped
+        </div>
+        """, height=220)
+
+        if df_num.shape[1] < 2:
+            st.error("Not enough usable numeric columns available after cleaning.")
+        else:
+            st.markdown('<div class="gbk-section-label">Select outcome metric</div>', unsafe_allow_html=True)
+            col_sel, col_btn = st.columns([4, 1])
+
+            with col_sel:
+                target = st.selectbox(
+                    "",
+                    options=df_num.columns.tolist(),
+                    format_func=display_name,
+                    label_visibility="collapsed",
+                    key="target_select"
+                )
+
+            with col_btn:
+                run = st.button("Run Analysis", key="run_driver_model")
+
+            if run:
+                X = df_num.drop(columns=[target], errors="ignore")
+                y = df_num[target]
+
+                if X.shape[1] == 0:
+                    st.error("No predictor columns available after cleaning.")
+                else:
+                    with st.spinner("Running model..."):
+                        model = RandomForestRegressor(
+                            n_estimators=200,
+                            random_state=42,
+                            n_jobs=-1
+                        )
+                        model.fit(X, y)
+
+                    importances = pd.Series(model.feature_importances_, index=X.columns)
+                    ranked = importances.sort_values(ascending=False)
+                    top5 = ranked.head(5)
+
+                    render_bar_chart(top5)
+                    render_insights(target, top5)
+                    render_next_steps(target, top5)
+
+                    with st.expander("View detailed driver ranking"):
+                        render_detail_table(ranked)
+
+        with st.expander("View raw data preview"):
+            st.dataframe(df_raw.head(), use_container_width=True)
+
+        with st.expander("View cleaning details"):
             components.html(PANEL_CSS + f"""
-            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px;">
-              <div class="gbk-panel" style="margin-bottom:0;">
-                <div class="gbk-panel-title">Respondents</div>
-                <div style="font-size:32px; font-weight:800; color:white; line-height:1;">{df_raw.shape[0]:,}</div>
-              </div>
-              <div class="gbk-panel" style="margin-bottom:0;">
-                <div class="gbk-panel-title">Total Columns</div>
-                <div style="font-size:32px; font-weight:800; color:white; line-height:1;">{df_raw.shape[1]:,}</div>
-              </div>
-              <div class="gbk-panel" style="margin-bottom:0;">
-                <div class="gbk-panel-title">Model-Ready</div>
-                <div style="font-size:32px; font-weight:800; color:white; line-height:1;">{df_num.shape[1]:,}</div>
-              </div>
-            </div>
-            <div style="background:rgba(232,80,58,0.07); border:1px solid rgba(232,80,58,0.2); border-radius:8px; padding:0.875rem 1.25rem; font-size:13px; color:rgba(255,255,255,0.55); line-height:1.7;">
-              <b style="color:#E8503A; font-weight:600;">Automated data prep:</b>
-              ID / date / meta fields excluded &nbsp;·&nbsp;
-              structurally empty columns dropped &nbsp;·&nbsp;
-              subgroup-driven sparse variables flagged separately &nbsp;·&nbsp;
-              remaining gaps filled with median &nbsp;·&nbsp;
-              constant columns dropped
-            </div>
-            """, height=220)
+            <div style="padding: 4px 0;">
 
-            if df_num.shape[1] < 2:
-                st.error("Not enough usable numeric columns available after cleaning.")
-            else:
-                st.markdown('<div class="gbk-section-label">Select outcome metric</div>', unsafe_allow_html=True)
-                col_sel, col_btn = st.columns([4, 1])
-
-                with col_sel:
-                    target = st.selectbox(
-                        "",
-                        options=df_num.columns.tolist(),
-                        format_func=display_name,
-                        label_visibility="collapsed",
-                        key="target_select"
-                    )
-
-                with col_btn:
-                    run = st.button("Run Analysis", key="run_driver_model")
-
-                if run:
-                    X = df_num.drop(columns=[target], errors="ignore")
-                    y = df_num[target]
-
-                    if X.shape[1] == 0:
-                        st.error("No predictor columns available after cleaning.")
-                    else:
-                        with st.spinner("Running model..."):
-                            model = RandomForestRegressor(
-                                n_estimators=200,
-                                random_state=42,
-                                n_jobs=-1
-                            )
-                            model.fit(X, y)
-
-                        importances = pd.Series(model.feature_importances_, index=X.columns)
-                        ranked = importances.sort_values(ascending=False)
-                        top5 = ranked.head(5)
-
-                        render_bar_chart(top5)
-                        render_insights(target, top5)
-                        render_next_steps(target, top5)
-
-                        with st.expander("View detailed driver ranking"):
-                            render_detail_table(ranked)
-
-            with st.expander("View raw data preview"):
-                st.dataframe(df_raw.head(), use_container_width=True)
-
-            with st.expander("View cleaning details"):
-                components.html(PANEL_CSS + f"""
-                <div style="padding: 4px 0;">
-
-                  <div style="margin-bottom:1.25rem;">
-                    <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
-                      Excluded ID / date / meta columns
-                    </div>
-                    <div>{pill_list(meta['excluded_cols'])}</div>
-                  </div>
-
-                  <div style="margin-bottom:1.25rem;">
-                    <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
-                      Dropped high-missing columns (&gt;40% missing)
-                    </div>
-                    <div>{pill_list(meta['drop_missing_cols'])}</div>
-                  </div>
-
-                  <div style="margin-bottom:1.25rem;">
-                    <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
-                      Subgroup candidate variables
-                    </div>
-                    <div>{pill_list(meta['subgroup_candidates'])}</div>
-                  </div>
-
-                  <div>
-                    <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
-                      Dropped constant columns
-                    </div>
-                    <div>{pill_list(meta['constant_cols'])}</div>
-                  </div>
-
+              <div style="margin-bottom:1.25rem;">
+                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
+                  Excluded ID / date / meta columns
                 </div>
-                """, height=380)
+                <div>{pill_list(meta['excluded_cols'])}</div>
+              </div>
 
-        except Exception as e:
-            st.error(f"Error loading data: {e}")
+              <div style="margin-bottom:1.25rem;">
+                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
+                  Dropped high-missing columns (&gt;40% missing)
+                </div>
+                <div>{pill_list(meta['drop_missing_cols'])}</div>
+              </div>
+
+              <div style="margin-bottom:1.25rem;">
+                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
+                  Subgroup candidate variables
+                </div>
+                <div>{pill_list(meta['subgroup_candidates'])}</div>
+              </div>
+
+              <div>
+                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
+                  Dropped constant columns
+                </div>
+                <div>{pill_list(meta['constant_cols'])}</div>
+              </div>
+
+            </div>
+            """, height=380)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
