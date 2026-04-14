@@ -1,8 +1,9 @@
-import streamlit as st
+import re as _re
+
 import pandas as pd
+import streamlit as st
 import streamlit.components.v1 as components
 from sklearn.ensemble import RandomForestRegressor
-import re as _re
 
 st.set_page_config(page_title="GBK Driver Analysis Tool", layout="wide")
 
@@ -306,27 +307,48 @@ def prepare_model_data(df: pd.DataFrame):
     df = df.copy()
     df.columns = [clean_column_name(c) for c in df.columns]
 
+    # 1. 去掉明显不该进模型的列
     excluded_cols = [c for c in df.columns if is_excluded_column(c)]
     df_model = df.drop(columns=excluded_cols, errors="ignore")
 
+    # 2. 只保留数值列
     df_num = df_model.select_dtypes(include=["number"]).copy()
 
+    # 3. 检查缺失值比例
     missing_ratio = df_num.isna().mean()
-    drop_missing_cols = missing_ratio[missing_ratio > 0.4].index.tolist()
+    high_missing_cols = missing_ratio[missing_ratio > 0.4].index.tolist()
+
+    # 4. 高缺失列分成两类
+    subgroup_candidates = []
+    drop_missing_cols = []
+
+    for col in high_missing_cols:
+        non_null_count = df_num[col].notna().sum()
+        if non_null_count > 30:
+            subgroup_candidates.append(col)
+        else:
+            drop_missing_cols.append(col)
+
+    # 5. baseline model 先删掉真正太空的列
     df_num = df_num.drop(columns=drop_missing_cols, errors="ignore")
 
+    # 6. 去掉 constant columns
     nunique = df_num.nunique(dropna=True)
     constant_cols = nunique[nunique <= 1].index.tolist()
     df_num = df_num.drop(columns=constant_cols, errors="ignore")
 
+    # 7. 用 median 补剩下的缺失值
     for col in df_num.columns:
         df_num[col] = df_num[col].fillna(df_num[col].median())
 
-    return df, df_num, {
+    meta = {
         "excluded_cols": excluded_cols,
         "drop_missing_cols": drop_missing_cols,
+        "subgroup_candidates": subgroup_candidates,
         "constant_cols": constant_cols,
     }
+
+    return df, df_num, meta
 
 PANEL_CSS = """
 <style>
@@ -387,6 +409,11 @@ def render_bar_chart(top5: pd.Series):
 def render_insights(target: str, top5: pd.Series):
     names = [display_name(x) for x in top5.index.tolist()]
     t_label = display_name(target)
+
+    second = names[1] if len(names) > 1 else names[0]
+    third = names[2] if len(names) > 2 else second
+    fourth = names[3] if len(names) > 3 else third
+
     components.html(PANEL_CSS + f"""
     <div class="gbk-panel">
       <div class="gbk-panel-title">What the data is telling us</div>
@@ -397,11 +424,11 @@ def render_insights(target: str, top5: pd.Series):
         </div>
         <div class="gbk-insight il-blue">
           <div style="font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:rgba(122,157,184,0.9); font-weight:700; margin-bottom:6px;">Supporting driver</div>
-          <b>{names[1]}</b> is also strongly associated with this outcome.
+          <b>{second}</b> is also strongly associated with this outcome.
         </div>
         <div class="gbk-insight il-gray gbk-insight-wide">
           <div style="font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:rgba(255,255,255,0.35); font-weight:700; margin-bottom:6px;">Also worth watching</div>
-          <b>{names[2]}</b> and <b>{names[3]}</b> round out the picture and may matter in future optimization.
+          <b>{third}</b> and <b>{fourth}</b> round out the picture and may matter in future optimization.
         </div>
       </div>
     </div>
@@ -410,10 +437,15 @@ def render_insights(target: str, top5: pd.Series):
 def render_next_steps(target: str, top5: pd.Series):
     names = [display_name(x) for x in top5.index.tolist()]
     t_label = display_name(target)
+
+    second = names[1] if len(names) > 1 else names[0]
+    third = names[2] if len(names) > 2 else second
+    fourth = names[3] if len(names) > 3 else third
+
     steps = [
         f"<b>Start with {names[0]}.</b> This has the strongest relationship with {t_label}.",
-        f"<b>Then review {names[1]}.</b> This is the second strongest lever.",
-        f"<b>Watch {names[2]} and {names[3]}.</b> They may still influence the outcome over time.",
+        f"<b>Then review {second}.</b> This is the second strongest lever.",
+        f"<b>Watch {third} and {fourth}.</b> They may still influence the outcome over time.",
         f"<b>Validate with business context.</b> Use these patterns alongside team judgment.",
     ]
     items = "".join(
@@ -441,6 +473,14 @@ def render_detail_table(top5: pd.Series):
       </table>
     </div>
     """, height=60 + len(top5) * 44)
+
+def pill_list(items):
+    if not items:
+        return '<span style="color:rgba(255,255,255,0.3); font-size:13px;">None</span>'
+    return " ".join(
+        f'<span style="display:inline-block; background:rgba(255,255,255,0.07); color:rgba(255,255,255,0.7); font-size:12px; padding:3px 10px; border-radius:4px; margin:2px 2px;">{x}</span>'
+        for x in items
+    )
 
 # =========================================================
 # Main App
@@ -483,7 +523,8 @@ else:
         <div style="background:rgba(232,80,58,0.07); border:1px solid rgba(232,80,58,0.2); border-radius:8px; padding:0.875rem 1.25rem; font-size:13px; color:rgba(255,255,255,0.55); line-height:1.7;">
           <b style="color:#E8503A; font-weight:600;">Automated data prep:</b>
           ID / date / meta fields excluded &nbsp;·&nbsp;
-          columns with &gt;40% missing removed &nbsp;·&nbsp;
+          structurally empty columns dropped &nbsp;·&nbsp;
+          subgroup-driven sparse variables flagged separately &nbsp;·&nbsp;
           remaining gaps filled with median &nbsp;·&nbsp;
           constant columns dropped
         </div>
@@ -494,6 +535,7 @@ else:
         else:
             st.markdown('<div class="gbk-section-label">Select outcome metric</div>', unsafe_allow_html=True)
             col_sel, col_btn = st.columns([4, 1])
+
             with col_sel:
                 target = st.selectbox(
                     "",
@@ -501,6 +543,7 @@ else:
                     format_func=display_name,
                     label_visibility="collapsed"
                 )
+
             with col_btn:
                 run = st.button("Run Analysis")
 
@@ -511,7 +554,7 @@ else:
                 if X.shape[1] == 0:
                     st.error("No predictor columns available after cleaning.")
                 else:
-                    with st.spinner("Running model…"):
+                    with st.spinner("Running model..."):
                         model = RandomForestRegressor(
                             n_estimators=200,
                             random_state=42,
@@ -532,30 +575,42 @@ else:
         with st.expander("View raw data preview"):
             st.dataframe(df_raw.head(), use_container_width=True)
 
+        st.write("subgroup candidates:", meta["subgroup_candidates"])
+
         with st.expander("View cleaning details"):
-            def pill_list(items):
-                if not items:
-                    return '<span style="color:rgba(255,255,255,0.3); font-size:13px;">None</span>'
-                return " ".join(
-                    f'<span style="display:inline-block; background:rgba(255,255,255,0.07); color:rgba(255,255,255,0.7); font-size:12px; padding:3px 10px; border-radius:4px; margin:2px 2px;">{x}</span>'
-                    for x in items
-                )
             components.html(PANEL_CSS + f"""
             <div style="padding: 4px 0;">
+
               <div style="margin-bottom:1.25rem;">
-                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">Excluded ID / date / meta columns</div>
+                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
+                  Excluded ID / date / meta columns
+                </div>
                 <div>{pill_list(meta['excluded_cols'])}</div>
               </div>
+
               <div style="margin-bottom:1.25rem;">
-                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">Dropped high-missing columns (&gt;40% missing)</div>
+                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
+                  Dropped high-missing columns (&gt;40% missing)
+                </div>
                 <div>{pill_list(meta['drop_missing_cols'])}</div>
               </div>
+
+              <div style="margin-bottom:1.25rem;">
+                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
+                  Subgroup candidate variables
+                </div>
+                <div>{pill_list(meta['subgroup_candidates'])}</div>
+              </div>
+
               <div>
-                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">Dropped constant columns</div>
+                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
+                  Dropped constant columns
+                </div>
                 <div>{pill_list(meta['constant_cols'])}</div>
               </div>
+
             </div>
-            """, height=max(200, 80 + (len(meta['excluded_cols']) + len(meta['drop_missing_cols']) + len(meta['constant_cols'])) * 2))
+            """, height=380)
 
     except Exception as e:
         st.error(f"Error loading data: {e}")
