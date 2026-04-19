@@ -1,32 +1,29 @@
 import re as _re
 
+import numpy as np
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler
 
 st.set_page_config(page_title="GBK Marketing Insights Suite", layout="wide")
 
 # =========================================================
 # Session State
 # =========================================================
-if "page" not in st.session_state:
-    st.session_state.page = "dashboard"
-
-if "uploaded_df_raw" not in st.session_state:
-    st.session_state.uploaded_df_raw = None
-
-if "uploaded_df_num" not in st.session_state:
-    st.session_state.uploaded_df_num = None
-
-if "uploaded_meta" not in st.session_state:
-    st.session_state.uploaded_meta = None
-
-if "uploaded_filename" not in st.session_state:
-    st.session_state.uploaded_filename = None
+for k, v in {
+    "uploaded_df_raw": None,
+    "uploaded_df_num": None,
+    "uploaded_meta": None,
+    "uploaded_filename": None,
+    "analysis_result": None,
+}.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 # =========================================================
-# GBK Brand Styling
+# Styling
 # =========================================================
 st.markdown("""
 <style>
@@ -45,80 +42,15 @@ html, body, [class*="css"] {
 }
 
 .block-container {
-    padding: 0 !important;
+    padding: 1rem 2rem 2rem !important;
     max-width: 100% !important;
-}
-
-.gbk-topbar {
-    background: #1a202c;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    padding: 0.9rem 2.5rem 0.8rem;
-    position: sticky;
-    top: 0;
-    z-index: 999;
-}
-
-.gbk-logo-wrap {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-}
-
-.gbk-logo-main {
-    font-size: 20px;
-    font-weight: 900;
-    color: #E8503A;
-    letter-spacing: -0.5px;
-    line-height: 1;
-}
-
-.gbk-logo-sub {
-    font-size: 10px;
-    color: rgba(255,255,255,0.35);
-    letter-spacing: 2.5px;
-    text-transform: uppercase;
-}
-
-div[data-testid="stButton"] > button {
-    background: #E8503A !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-size: 12px !important;
-    font-weight: 700 !important;
-    letter-spacing: 1.2px !important;
-    text-transform: uppercase !important;
-    padding: 0.65rem 1rem !important;
-    box-shadow: none !important;
-}
-
-div[data-testid="stButton"] > button:hover {
-    background: #d4432e !important;
-    color: white !important;
-}
-
-div[data-testid="stButton"] > button[kind="secondary"] {
-    background: transparent !important;
-    color: rgba(255,255,255,0.50) !important;
-    border: none !important;
-    border-radius: 0 !important;
-    font-size: 11px !important;
-    font-weight: 700 !important;
-    letter-spacing: 1.4px !important;
-    text-transform: uppercase !important;
-    padding: 0.55rem 0.25rem !important;
-}
-
-div[data-testid="stButton"] > button[kind="secondary"]:hover {
-    background: transparent !important;
-    color: white !important;
 }
 
 .gbk-hero {
     background: #1a202c;
-    padding: 3rem 2.5rem 2.5rem;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    margin-bottom: 0;
+    padding: 2rem 2rem 1.75rem;
+    border-radius: 10px;
+    margin-bottom: 1.5rem;
 }
 
 .gbk-eyebrow {
@@ -127,60 +59,41 @@ div[data-testid="stButton"] > button[kind="secondary"]:hover {
     letter-spacing: 3px;
     text-transform: uppercase;
     font-weight: 600;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.5rem;
 }
 
 .gbk-hero h1 {
-    font-size: 42px;
+    font-size: 36px;
     font-weight: 900;
     color: white;
     line-height: 1.05;
     text-transform: uppercase;
     letter-spacing: -1px;
-    margin-bottom: 0.75rem;
+    margin: 0 0 0.5rem;
 }
 
 .gbk-hero p {
-    font-size: 14px;
+    font-size: 13px;
     color: rgba(255,255,255,0.45);
-    max-width: 560px;
     line-height: 1.7;
     margin: 0;
 }
 
-.gbk-content {
-    padding: 2rem 2.5rem;
-}
-
-.gbk-section-label {
+.gbk-label {
     font-size: 10px;
-    color: rgba(255,255,255,0.3);
+    color: rgba(255,255,255,0.35);
     text-transform: uppercase;
     letter-spacing: 2.5px;
     font-weight: 700;
-    margin-bottom: 0.6rem;
-}
-
-.gbk-upload-box {
-    background: #1a202c;
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 10px;
-    padding: 1.5rem 1.75rem;
-    margin-bottom: 1.5rem;
-}
-
-.gbk-note {
-    font-size: 13px;
-    color: rgba(255,255,255,0.55);
-    line-height: 1.7;
+    margin-bottom: 0.4rem;
 }
 
 .gbk-panel {
     background: #1a202c;
     border-radius: 10px;
     border: 1px solid rgba(255,255,255,0.06);
-    padding: 1.5rem 1.75rem;
-    margin-bottom: 1.25rem;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1rem;
 }
 
 .gbk-panel-title {
@@ -189,7 +102,79 @@ div[data-testid="stButton"] > button[kind="secondary"]:hover {
     text-transform: uppercase;
     letter-spacing: 2.5px;
     color: rgba(255,255,255,0.3);
-    margin-bottom: 1.25rem;
+    margin-bottom: 0.75rem;
+}
+
+.gbk-note {
+    font-size: 13px;
+    color: rgba(255,255,255,0.55);
+    line-height: 1.7;
+}
+
+.gbk-stat {
+    font-size: 30px;
+    font-weight: 800;
+    color: white;
+    line-height: 1;
+}
+
+.gbk-card {
+    background: #1a202c;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.06);
+    padding: 1.25rem 1.5rem;
+}
+
+.gbk-card-kicker {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2.5px;
+    color: rgba(255,255,255,0.3);
+    margin-bottom: 0.6rem;
+}
+
+.gbk-card-text {
+    font-size: 18px;
+    font-weight: 800;
+    color: white;
+    line-height: 1.2;
+}
+
+.gbk-bar-wrap {
+    margin-bottom: 10px;
+}
+
+.gbk-bar-label {
+    font-size: 12px;
+    color: rgba(255,255,255,0.65);
+    margin-bottom: 3px;
+}
+
+.gbk-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.gbk-bar-track {
+    flex: 1;
+    background: rgba(255,255,255,0.07);
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+}
+
+.gbk-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+}
+
+.gbk-bar-val {
+    font-size: 11px;
+    color: rgba(255,255,255,0.3);
+    width: 48px;
+    text-align: right;
 }
 
 .gbk-disclaimer {
@@ -199,43 +184,107 @@ div[data-testid="stButton"] > button[kind="secondary"]:hover {
     font-style: italic;
 }
 
-.gbk-card-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    margin-bottom: 16px;
+.gbk-insight {
+    background: rgba(255,255,255,0.03);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    border-left: 3px solid rgba(255,255,255,0.12);
+    font-size: 13px;
+    color: rgba(255,255,255,0.55);
+    line-height: 1.6;
+    margin-bottom: 8px;
 }
 
-.gbk-card {
-    background: #1a202c;
-    border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.06);
-    padding: 1.5rem 1.75rem;
+.gbk-insight b {
+    color: white;
 }
 
-.gbk-card-kicker {
+.gbk-insight-red {
+    border-left-color: #E8503A;
+}
+
+.gbk-insight-blue {
+    border-left-color: #7a9db8;
+}
+
+.gbk-step-item {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    font-size: 13px;
+    color: rgba(255,255,255,0.55);
+    line-height: 1.6;
+    margin-bottom: 10px;
+}
+
+.gbk-step-num {
+    background: #E8503A;
+    color: white;
     font-size: 10px;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 2.5px;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.gbk-step-item b {
+    color: rgba(255,255,255,0.85);
+}
+
+.gbk-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+}
+
+.gbk-summary-key {
+    font-size: 10px;
     color: rgba(255,255,255,0.3);
-    margin-bottom: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
 }
 
-.gbk-card-value {
-    font-size: 32px;
-    font-weight: 800;
+.gbk-summary-val {
+    font-size: 13px;
     color: white;
-    line-height: 1;
+    font-weight: 600;
 }
 
-.gbk-card-text {
-    font-size: 20px;
-    font-weight: 800;
-    color: white;
-    line-height: 1.2;
+.gbk-tag {
+    display: inline-block;
+    background: rgba(255,255,255,0.07);
+    color: rgba(255,255,255,0.7);
+    font-size: 12px;
+    padding: 2px 9px;
+    border-radius: 4px;
+    margin: 2px;
 }
 
+div[data-testid="stButton"] > button,
+div[data-testid="stFormSubmitButton"] > button {
+    background: #E8503A !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    letter-spacing: 1.2px !important;
+    text-transform: uppercase !important;
+    padding: 0.6rem 1rem !important;
+}
+
+div[data-testid="stButton"] > button:hover,
+div[data-testid="stFormSubmitButton"] > button:hover {
+    background: #d4432e !important;
+}
+
+div[data-baseweb="select"] > div,
 div[data-testid="stSelectbox"] > div > div {
     background: #1a202c !important;
     border: 1px solid rgba(255,255,255,0.12) !important;
@@ -243,8 +292,10 @@ div[data-testid="stSelectbox"] > div > div {
     color: white !important;
 }
 
-div[data-testid="stSelectbox"] svg {
-    fill: rgba(255,255,255,0.4) !important;
+div[data-testid="stMultiSelect"] > div {
+    background: #1a202c !important;
+    border: 1px solid rgba(255,255,255,0.12) !important;
+    border-radius: 8px !important;
 }
 
 div[data-testid="stFileUploader"] section {
@@ -276,33 +327,18 @@ details summary {
 div[data-testid="stDataFrame"] {
     background: #1a202c !important;
     border-radius: 8px !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
 }
 
-.stMarkdown p, .stMarkdown li, .stMarkdown span,
-div[data-testid="stText"],
-div[data-testid="stExpander"] p,
-div[data-testid="stExpander"] li,
-div[data-testid="stExpander"] span {
+.stMarkdown p, .stMarkdown li {
     color: rgba(255,255,255,0.75) !important;
 }
 
-.stMarkdown strong, .stMarkdown b,
-div[data-testid="stExpander"] strong,
-div[data-testid="stExpander"] b {
+.stMarkdown strong, .stMarkdown b {
     color: white !important;
 }
 
-pre, code {
-    background: rgba(0,0,0,0.3) !important;
+div[data-testid="stCheckbox"] label span {
     color: rgba(255,255,255,0.75) !important;
-    border-radius: 6px !important;
-}
-
-@media (max-width: 1100px) {
-    .gbk-card-grid {
-        grid-template-columns: 1fr;
-    }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -320,69 +356,29 @@ NAME_MAP = {
     "C11": "Brand Trust",
     "C12": "Retailer",
 }
-
 BAR_COLORS = ["#E8503A", "#9ab8d0", "#7a9db8", "#5a82a0", "#3a6788"]
 
-PANEL_CSS = """
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
-body { background: transparent; }
-.gbk-panel { background:#1a202c; border-radius:10px; border:1px solid rgba(255,255,255,0.06); padding:1.5rem 1.75rem; margin-bottom:4px; }
-.gbk-panel-title { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:2.5px; color:rgba(255,255,255,0.3); margin-bottom:1.25rem; }
-.gbk-bar-row { display:flex; align-items:center; gap:14px; margin-bottom:12px; }
-.gbk-bar-label { font-size:13px; color:rgba(255,255,255,0.65); width:175px; flex-shrink:0; }
-.gbk-bar-track { flex:1; background:rgba(255,255,255,0.05); border-radius:4px; height:8px; overflow:hidden; }
-.gbk-bar-fill { height:100%; border-radius:4px; }
-.gbk-bar-value { font-size:12px; color:rgba(255,255,255,0.3); width:42px; text-align:right; flex-shrink:0; }
-.gbk-disclaimer { font-size:11px; color:rgba(255,255,255,0.2); margin-top:0.75rem; font-style:italic; }
-.gbk-insights { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.gbk-insight { background:rgba(255,255,255,0.03); border-radius:6px; padding:0.875rem 1rem; border-left:3px solid; font-size:13px; color:rgba(255,255,255,0.55); line-height:1.6; }
-.gbk-insight b { color:white; font-weight:600; }
-.gbk-insight-wide { grid-column:span 2; }
-.il-red { border-color:#E8503A; }
-.il-blue { border-color:#7a9db8; }
-.il-gray { border-color:rgba(255,255,255,0.12); }
-.gbk-steps { list-style:none; padding:0; display:flex; flex-direction:column; gap:12px; }
-.gbk-step { display:flex; align-items:flex-start; gap:12px; font-size:13px; color:rgba(255,255,255,0.55); line-height:1.6; }
-.gbk-step b { color:rgba(255,255,255,0.85); }
-.gbk-step-num { background:#E8503A; color:white; font-size:10px; font-weight:700; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px; }
-.gbk-table { width:100%; border-collapse:collapse; font-size:13px; }
-.gbk-table th { text-align:left; font-size:10px; color:rgba(255,255,255,0.3); letter-spacing:2px; text-transform:uppercase; padding:0 0 0.75rem; border-bottom:1px solid rgba(255,255,255,0.08); font-weight:700; }
-.gbk-table td { padding:0.6rem 0; border-bottom:1px solid rgba(255,255,255,0.04); color:rgba(255,255,255,0.6); }
-.gbk-table td:first-child { color:rgba(255,255,255,0.25); width:32px; }
-.gbk-table td:last-child { color:rgba(255,255,255,0.35); }
-</style>
-"""
-
 # =========================================================
-# Helper Functions
+# Helpers
 # =========================================================
-def _auto_label(col: str) -> str:
-    s = str(col)
-    s = s.replace("_", " ")
+def _auto_label(col):
+    s = str(col).replace("_", " ")
     s = _re.sub(r"([a-zA-Z])(\d)", r"\1 \2", s)
     s = _re.sub(r"([a-z])([A-Z])", r"\1 \2", s)
-    s = _re.sub(r"\s+", " ", s).strip()
-    return s.title()
+    return _re.sub(r"\s+", " ", s).strip().title()
 
-def clean_column_name(col: str) -> str:
-    return str(col).strip()
-
-def display_name(col: str) -> str:
+def display_name(col):
     return NAME_MAP.get(col, _auto_label(col))
 
-def is_excluded_column(col: str) -> bool:
-    col_lower = col.lower()
-    exclude_keywords = [
+def is_excluded_column(col):
+    return any(k in str(col).lower() for k in [
         "uuid", "record", "date", "start_date", "psid", "pid",
         "marker", "status", "qualityscore", "linercheck", "loi"
-    ]
-    return any(k in col_lower for k in exclude_keywords)
+    ])
 
-def prepare_model_data(df: pd.DataFrame):
+def prepare_model_data(df):
     df = df.copy()
-    df.columns = [clean_column_name(c) for c in df.columns]
+    df.columns = [str(c).strip() for c in df.columns]
 
     excluded_cols = [c for c in df.columns if is_excluded_column(c)]
     df_model = df.drop(columns=excluded_cols, errors="ignore")
@@ -390,534 +386,476 @@ def prepare_model_data(df: pd.DataFrame):
     df_num = df_model.select_dtypes(include=["number"]).copy()
 
     missing_ratio = df_num.isna().mean()
-    high_missing_cols = missing_ratio[missing_ratio > 0.4].index.tolist()
+    high_missing = missing_ratio[missing_ratio > 0.4].index.tolist()
 
     subgroup_candidates = []
     drop_missing_cols = []
 
-    for col in high_missing_cols:
-        non_null_count = df_num[col].notna().sum()
-        if non_null_count > 30:
+    for col in high_missing:
+        if df_num[col].notna().sum() > 30:
             subgroup_candidates.append(col)
         else:
             drop_missing_cols.append(col)
 
     df_num = df_num.drop(columns=drop_missing_cols, errors="ignore")
 
-    nunique = df_num.nunique(dropna=True)
-    constant_cols = nunique[nunique <= 1].index.tolist()
+    constant_cols = df_num.columns[df_num.nunique(dropna=True) <= 1].tolist()
     df_num = df_num.drop(columns=constant_cols, errors="ignore")
 
     for col in df_num.columns:
         df_num[col] = df_num[col].fillna(df_num[col].median())
 
-    meta = {
+    return df, df_num, {
         "excluded_cols": excluded_cols,
         "drop_missing_cols": drop_missing_cols,
         "subgroup_candidates": subgroup_candidates,
         "constant_cols": constant_cols,
     }
 
-    return df, df_num, meta
+def compute_importance(X, y, method):
+    if method == "Random Forest":
+        model = RandomForestRegressor(n_estimators=200, random_state=42, n_jobs=-1)
+        model.fit(X, y)
+        imp = pd.Series(model.feature_importances_, index=X.columns)
+    elif method == "Correlation":
+        imp = pd.Series({c: abs(X[c].corr(y)) for c in X.columns})
+    else:
+        scaler = StandardScaler()
+        Xs = scaler.fit_transform(X)
+        model = LinearRegression().fit(Xs, y)
+        imp = pd.Series(np.abs(model.coef_), index=X.columns)
 
-def render_bar_chart(top5: pd.Series):
-    max_val = top5.iloc[0] if len(top5) > 0 else 0
+    return imp.sort_values(ascending=False)
+
+def pill_tags(items):
+    if not items:
+        return '<span style="color:rgba(255,255,255,0.3);font-size:13px;">None</span>'
+    return "".join(f'<span class="gbk-tag">{x}</span>' for x in items)
+
+# =========================================================
+# Render helpers
+# =========================================================
+def render_bar_chart(top5, title="Top Associated Drivers"):
+    max_val = top5.iloc[0] if len(top5) else 1
+
     bars_html = ""
     for i, (col, val) in enumerate(top5.items()):
         color = BAR_COLORS[i] if i < len(BAR_COLORS) else BAR_COLORS[-1]
-        pct = round(val / max_val * 100) if max_val != 0 else 0
-        label = display_name(col)
-        bars_html += f"""
-        <div class="gbk-bar-row">
-          <div class="gbk-bar-label">{label}</div>
-          <div class="gbk-bar-track">
-            <div class="gbk-bar-fill" style="width:{pct}%; background:{color};"></div>
-          </div>
-          <div class="gbk-bar-value">{val:.3f}</div>
-        </div>
-        """
-    components.html(PANEL_CSS + f"""
-    <div class="gbk-panel">
-      <div class="gbk-panel-title">Top Associated Drivers</div>
-      {bars_html}
-      <div class="gbk-disclaimer">Longer bar = stronger model-based importance. These are directional patterns, not proof of causality.</div>
-    </div>
-    """, height=60 + max(1, len(top5)) * 44)
+        pct = round(val / max_val * 100) if max_val else 0
 
-def render_insights(target: str, top5: pd.Series):
-    names = [display_name(x) for x in top5.index.tolist()]
+        bars_html += (
+            f'<div class="gbk-bar-wrap">'
+            f'<div class="gbk-bar-label">{display_name(col)}</div>'
+            f'<div class="gbk-bar-row">'
+            f'<div class="gbk-bar-track">'
+            f'<div class="gbk-bar-fill" style="width:{pct}%;background:{color};"></div>'
+            f'</div>'
+            f'<div class="gbk-bar-val">{val:.3f}</div>'
+            f'</div>'
+            f'</div>'
+        )
+
+    html = (
+        f'<div class="gbk-panel">'
+        f'<div class="gbk-panel-title">{title}</div>'
+        f'{bars_html}'
+        f'<div class="gbk-disclaimer">Longer bar = stronger model-based importance. Directional, not causal.</div>'
+        f'</div>'
+    )
+
+    st.markdown(html, unsafe_allow_html=True)
+
+def render_insights(target, top5):
+    names = [display_name(x) for x in top5.index]
     if not names:
         return
 
-    t_label = display_name(target)
-    second = names[1] if len(names) > 1 else names[0]
-    third = names[2] if len(names) > 2 else second
-    fourth = names[3] if len(names) > 3 else third
+    t = display_name(target)
+    n2 = names[1] if len(names) > 1 else names[0]
+    n3 = names[2] if len(names) > 2 else n2
+    n4 = names[3] if len(names) > 3 else n3
 
-    components.html(PANEL_CSS + f"""
-    <div class="gbk-panel">
-      <div class="gbk-panel-title">What the data suggests</div>
-      <div class="gbk-insights">
-        <div class="gbk-insight il-red">
-          <div style="font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:rgba(255,80,58,0.8); font-weight:700; margin-bottom:6px;">Primary signal</div>
-          <b>{names[0]}</b> appears to be the strongest variable associated with <b>{t_label}</b>.
-        </div>
-        <div class="gbk-insight il-blue">
-          <div style="font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:rgba(122,157,184,0.9); font-weight:700; margin-bottom:6px;">Secondary signal</div>
-          <b>{second}</b> also shows a meaningful association with this outcome.
-        </div>
-        <div class="gbk-insight il-gray gbk-insight-wide">
-          <div style="font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:rgba(255,255,255,0.35); font-weight:700; margin-bottom:6px;">Broader context</div>
-          <b>{third}</b> and <b>{fourth}</b> are also worth reviewing alongside business context and prior knowledge.
-        </div>
-      </div>
-    </div>
-    """, height=260)
+    html = (
+        f'<div class="gbk-panel">'
+        f'<div class="gbk-panel-title">What the data suggests</div>'
+        f'<div class="gbk-insight gbk-insight-red">'
+        f'<b>Primary signal</b><br>'
+        f'<b>{names[0]}</b> appears to be the strongest variable associated with <b>{t}</b>.'
+        f'</div>'
+        f'<div class="gbk-insight gbk-insight-blue">'
+        f'<b>Secondary signal</b><br>'
+        f'<b>{n2}</b> also shows a meaningful association with this outcome.'
+        f'</div>'
+        f'<div class="gbk-insight">'
+        f'<b>Broader context</b><br>'
+        f'<b>{n3}</b> and <b>{n4}</b> are also worth reviewing alongside business context and prior knowledge.'
+        f'</div>'
+        f'</div>'
+    )
+    st.markdown(html, unsafe_allow_html=True)
 
-def render_next_steps(target: str, top5: pd.Series):
-    names = [display_name(x) for x in top5.index.tolist()]
+def render_next_steps(target, top5):
+    names = [display_name(x) for x in top5.index]
     if not names:
         return
 
-    t_label = display_name(target)
-    second = names[1] if len(names) > 1 else names[0]
-    third = names[2] if len(names) > 2 else second
-    fourth = names[3] if len(names) > 3 else third
+    t = display_name(target)
+    n2 = names[1] if len(names) > 1 else names[0]
+    n3 = names[2] if len(names) > 2 else n2
+    n4 = names[3] if len(names) > 3 else n3
 
     steps = [
-        f"<b>Start with {names[0]}.</b> It shows the strongest association with {t_label}.",
-        f"<b>Review {second} next.</b> It appears to be another meaningful driver candidate.",
-        f"<b>Keep {third} and {fourth} in the discussion.</b> They may matter depending on audience and context.",
-        f"<b>Validate with business judgment.</b> Use these results as decision support, not as a standalone answer.",
+        f"<b>Start with {names[0]}.</b> It shows the strongest association with {t}.",
+        f"<b>Review {n2} next.</b> It appears to be another meaningful driver candidate.",
+        f"<b>Keep {n3} and {n4} in the discussion.</b> They may matter depending on audience and context.",
+        "<b>Validate with business judgment.</b> Use these results as decision support, not a standalone answer.",
     ]
+
     items = "".join(
-        f'<li class="gbk-step"><span class="gbk-step-num">{i+1}</span><span>{s}</span></li>'
+        f'<div class="gbk-step-item"><div class="gbk-step-num">{i+1}</div><div>{s}</div></div>'
         for i, s in enumerate(steps)
     )
-    components.html(PANEL_CSS + f"""
-    <div class="gbk-panel">
-      <div class="gbk-panel-title">Suggested next steps</div>
-      <ul class="gbk-steps">{items}</ul>
-    </div>
-    """, height=300)
 
-def render_detail_table(ranked: pd.Series):
+    html = (
+        f'<div class="gbk-panel">'
+        f'<div class="gbk-panel-title">Suggested next steps</div>'
+        f'{items}'
+        f'</div>'
+    )
+    st.markdown(html, unsafe_allow_html=True)
+
+def render_detail_table(ranked):
     rows = "".join(
-        f"<tr><td>{i+1}</td><td>{display_name(col)}</td><td>{val:.3f}</td></tr>"
+        f"<tr>"
+        f"<td style='color:rgba(255,255,255,0.25);padding:6px 8px;'>{i+1}</td>"
+        f"<td style='color:rgba(255,255,255,0.7);padding:6px 8px;'>{display_name(col)}</td>"
+        f"<td style='color:rgba(255,255,255,0.35);padding:6px 8px;'>{val:.3f}</td>"
+        f"</tr>"
         for i, (col, val) in enumerate(ranked.items())
     )
-    components.html(PANEL_CSS + f"""
-    <div class="gbk-panel">
-      <div class="gbk-panel-title">Full Driver Ranking</div>
-      <table class="gbk-table">
-        <thead><tr><th>#</th><th>Driver</th><th>Importance Score</th></tr></thead>
-        <tbody>{rows}</tbody>
-      </table>
-    </div>
-    """, height=min(600, 60 + len(ranked) * 44))
 
-def pill_list(items):
-    if not items:
-        return '<span style="color:rgba(255,255,255,0.3); font-size:13px;">None</span>'
-    return " ".join(
-        f'<span style="display:inline-block; background:rgba(255,255,255,0.07); color:rgba(255,255,255,0.7); font-size:12px; padding:3px 10px; border-radius:4px; margin:2px 2px;">{x}</span>'
-        for x in items
+    html = (
+        f'<div class="gbk-panel">'
+        f'<div class="gbk-panel-title">Full Driver Ranking</div>'
+        f'<table style="width:100%;border-collapse:collapse;font-size:13px;">'
+        f'<thead>'
+        f'<tr>'
+        f'<th style="text-align:left;font-size:10px;color:rgba(255,255,255,0.3);letter-spacing:2px;text-transform:uppercase;padding:0 8px 8px;border-bottom:1px solid rgba(255,255,255,0.08);">#</th>'
+        f'<th style="text-align:left;font-size:10px;color:rgba(255,255,255,0.3);letter-spacing:2px;text-transform:uppercase;padding:0 8px 8px;border-bottom:1px solid rgba(255,255,255,0.08);">Driver</th>'
+        f'<th style="text-align:left;font-size:10px;color:rgba(255,255,255,0.3);letter-spacing:2px;text-transform:uppercase;padding:0 8px 8px;border-bottom:1px solid rgba(255,255,255,0.08);">Score</th>'
+        f'</tr>'
+        f'</thead>'
+        f'<tbody>{rows}</tbody>'
+        f'</table>'
+        f'</div>'
     )
 
-def clear_uploaded_data():
-    st.session_state.uploaded_df_raw = None
-    st.session_state.uploaded_df_num = None
-    st.session_state.uploaded_meta = None
-    st.session_state.uploaded_filename = None
+    st.markdown(html, unsafe_allow_html=True)
 
 # =========================================================
-# UI Renderers
+# Analysis
 # =========================================================
-def render_nav():
-    st.markdown('<div class="gbk-topbar">', unsafe_allow_html=True)
-    col_logo, col_nav = st.columns([2.5, 7.5])
+def run_analysis(df_num, df_raw, target, x_vars, sg_var, method):
+    predictors = [c for c in (x_vars if x_vars else df_num.columns) if c != target and c in df_num.columns]
 
-    with col_logo:
-        st.markdown("""
-        <div class="gbk-logo-wrap">
-            <div class="gbk-logo-main">GBK</div>
-            <div class="gbk-logo-sub">Collective</div>
-        </div>
-        """, unsafe_allow_html=True)
+    if not predictors:
+        return {"error": "No valid predictor columns available."}
 
-    with col_nav:
-        nav_cols = st.columns(5)
-        labels = [
-            ("Dashboard", "dashboard"),
-            ("Driver Analysis", "driver"),
-            ("Segment Explorer", "segments"),
-            ("Brand Metrics", "metrics"),
-            ("Help", "help"),
-        ]
-        current = st.session_state.page
+    if not sg_var:
+        X = df_num[predictors]
+        y = df_num[target]
+        ranked = compute_importance(X, y, method)
 
-        for col, (label, key) in zip(nav_cols, labels):
-            with col:
-                if st.button(
-                    label,
-                    key=f"nav_{key}",
-                    use_container_width=True,
-                    type="primary" if current == key else "secondary"
-                ):
-                    st.session_state.page = key
-                    st.rerun()
+        return {
+            "mode": "single",
+            "target": target,
+            "method": method,
+            "ranked": ranked,
+            "top5": ranked.head(5),
+        }
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    if sg_var not in df_raw.columns:
+        return {"error": f"Subgroup variable '{sg_var}' not found."}
 
+    groups = sorted(df_raw[sg_var].dropna().unique())
+    subgroup_results = []
+
+    for gval in groups:
+        mask = df_raw[sg_var] == gval
+        grp = df_num.loc[df_num.index.isin(df_raw[mask].index)]
+
+        if grp.shape[0] < 30:
+            subgroup_results.append({
+                "group": gval,
+                "n": grp.shape[0],
+                "skipped": True,
+                "reason": "Too few respondents",
+            })
+            continue
+
+        X = grp[predictors]
+        y = grp[target]
+        ranked = compute_importance(X, y, method)
+
+        subgroup_results.append({
+            "group": gval,
+            "n": grp.shape[0],
+            "skipped": False,
+            "ranked": ranked,
+            "top5": ranked.head(5),
+        })
+
+    return {
+        "mode": "subgroup",
+        "target": target,
+        "method": method,
+        "sg_var": sg_var,
+        "results": subgroup_results,
+    }
+
+# =========================================================
+# Dashboard only
+# =========================================================
 def render_dashboard():
     st.markdown("""
     <div class="gbk-hero">
       <div class="gbk-eyebrow">GBK Toolbox</div>
       <h1>Marketing<br>Insights Suite</h1>
-      <p>A centralized workspace for brand health exploration, driver analysis, and audience-focused insight generation.</p>
+      <p>Configure your analysis pipeline below, then run.</p>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="gbk-content">', unsafe_allow_html=True)
+    st.markdown('<div class="gbk-label">Upload dataset</div>', unsafe_allow_html=True)
+    uploaded_file = st.file_uploader(
+        "Upload .xlsx",
+        type=["xlsx"],
+        key="dashboard_upload",
+        label_visibility="collapsed"
+    )
 
-    st.markdown("""
-    <div class="gbk-card-grid">
-      <div class="gbk-card">
-        <div class="gbk-card-kicker">Primary Use Case</div>
-        <div class="gbk-card-text">Key Driver Analysis</div>
-      </div>
-      <div class="gbk-card">
-        <div class="gbk-card-kicker">Core Audience</div>
-        <div class="gbk-card-text">Marketing Teams</div>
-      </div>
-      <div class="gbk-card">
-        <div class="gbk-card-kicker">Primary Output</div>
-        <div class="gbk-card-text">Actionable Insights</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if st.session_state.uploaded_df_raw is not None:
-        df_raw = st.session_state.uploaded_df_raw
-        df_num = st.session_state.uploaded_df_num
-        st.markdown(f"""
-        <div class="gbk-panel">
-          <div class="gbk-panel-title">Current dataset</div>
-          <div class="gbk-note">
-            <b>{st.session_state.uploaded_filename}</b> is currently loaded. The active dataset contains
-            <b>{df_raw.shape[0]:,}</b> respondents, <b>{df_raw.shape[1]:,}</b> total columns, and
-            <b>{df_num.shape[1]:,}</b> model-ready numeric variables.
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="gbk-card-grid">
-      <div class="gbk-card">
-        <div class="gbk-card-kicker">Module</div>
-        <div class="gbk-card-text">Driver Analysis</div>
-        <div class="gbk-note" style="margin-top:12px;">Upload data, select an outcome, and review top associated variables.</div>
-      </div>
-      <div class="gbk-card">
-        <div class="gbk-card-kicker">Module</div>
-        <div class="gbk-card-text">Segment Explorer</div>
-        <div class="gbk-note" style="margin-top:12px;">Compare patterns across audience groups and future subgroup cuts.</div>
-      </div>
-      <div class="gbk-card">
-        <div class="gbk-card-kicker">Module</div>
-        <div class="gbk-card-text">Brand Metrics</div>
-        <div class="gbk-note" style="margin-top:12px;">Review label mappings and available business-facing metric names.</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-def render_driver_analysis():
-    st.markdown("""
-    <div class="gbk-hero">
-      <div class="gbk-eyebrow">Analysis Workspace</div>
-      <h1>Driver<br>Analysis</h1>
-      <p>Upload survey data, select an outcome metric, and identify the strongest associated drivers behind key marketing outcomes.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="gbk-content">', unsafe_allow_html=True)
-
-    uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"], key="driver_upload")
-
-    if uploaded_file is not None:
+    if uploaded_file:
         try:
-            df_raw = pd.read_excel(uploaded_file)
-            df_raw, df_num, meta = prepare_model_data(df_raw)
-
+            df_raw, df_num, meta = prepare_model_data(pd.read_excel(uploaded_file))
             st.session_state.uploaded_df_raw = df_raw
             st.session_state.uploaded_df_num = df_num
             st.session_state.uploaded_meta = meta
             st.session_state.uploaded_filename = uploaded_file.name
-
+            st.session_state.analysis_result = None
         except Exception as e:
-            st.error(f"Error loading data: {e}")
+            st.error(f"Error loading file: {e}")
 
     df_raw = st.session_state.uploaded_df_raw
     df_num = st.session_state.uploaded_df_num
     meta = st.session_state.uploaded_meta
-    uploaded_filename = st.session_state.uploaded_filename
 
-    if df_raw is None or df_num is None or meta is None:
-        st.markdown("""
-        <div class="gbk-upload-box">
-          <div class="gbk-section-label">Upload dataset</div>
-          <div class="gbk-note">
-            Upload an <b>.xlsx</b> survey dataset to begin. The tool will automatically clean the data,
-            identify model-ready numeric fields, and allow you to run driver analysis on a selected outcome metric.
-            Uploaded files are only used during the current session.
+    if df_raw is None or df_num is None:
+        st.markdown(
+            '<div class="gbk-note" style="color:rgba(255,255,255,0.25);">Upload an .xlsx dataset to begin.</div>',
+            unsafe_allow_html=True
+        )
+        return
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.markdown(
+        f'<div class="gbk-card"><div class="gbk-card-kicker">File</div>'
+        f'<div class="gbk-card-text" style="font-size:13px;">{st.session_state.uploaded_filename}</div></div>',
+        unsafe_allow_html=True
+    )
+    c2.markdown(
+        f'<div class="gbk-card"><div class="gbk-card-kicker">Respondents</div>'
+        f'<div class="gbk-stat">{df_raw.shape[0]:,}</div></div>',
+        unsafe_allow_html=True
+    )
+    c3.markdown(
+        f'<div class="gbk-card"><div class="gbk-card-kicker">Total Columns</div>'
+        f'<div class="gbk-stat">{df_raw.shape[1]:,}</div></div>',
+        unsafe_allow_html=True
+    )
+    c4.markdown(
+        f'<div class="gbk-card"><div class="gbk-card-kicker">Model-Ready</div>'
+        f'<div class="gbk-stat">{df_num.shape[1]:,}</div></div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    y_options = df_num.columns.tolist()
+    raw_cats = [
+        c for c in df_raw.columns
+        if df_raw[c].dtype == object or (df_raw[c].nunique() <= 10 and c not in y_options)
+    ]
+
+    with st.form("analysis_form"):
+        st.markdown(
+            '<div class="gbk-panel">'
+            '<div class="gbk-panel-title">Step 1 · Outcome variable (Y)</div>'
+            '<div class="gbk-note">The metric you want to explain — e.g. overall satisfaction, brand trust.</div>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        y_var = st.selectbox(
+            "Y variable",
+            ["(select)"] + y_options,
+            format_func=lambda c: display_name(c) if c != "(select)" else "— select outcome —",
+            label_visibility="collapsed",
+            key="dash_y"
+        )
+        y_selected = y_var if y_var != "(select)" else None
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown(
+            '<div class="gbk-panel">'
+            '<div class="gbk-panel-title">Step 2 · Predictor variables (X)</div>'
+            '<div class="gbk-note">Select specific drivers, or leave empty to use all available variables.</div>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        x_options = [c for c in y_options if c != y_selected]
+        x_vars = st.multiselect(
+            "X variables",
+            x_options,
+            format_func=display_name,
+            label_visibility="collapsed",
+            key="dash_x",
+            placeholder="All variables (default)"
+        )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown(
+            '<div class="gbk-panel">'
+            '<div class="gbk-panel-title">Step 3 · Subgroup loop (optional)</div>'
+            '<div class="gbk-note">Run driver analysis separately for each level of a categorical variable.</div>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        use_sg = st.checkbox("Enable subgroup loop", key="dash_use_sg")
+        sg_var = None
+
+        if use_sg:
+            if raw_cats:
+                sg_raw = st.selectbox(
+                    "Grouping variable",
+                    ["(select)"] + raw_cats,
+                    label_visibility="collapsed",
+                    key="dash_sg"
+                )
+                sg_var = sg_raw if sg_raw != "(select)" else None
+            else:
+                st.markdown(
+                    '<div class="gbk-note">No suitable categorical columns detected.</div>',
+                    unsafe_allow_html=True
+                )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown(
+            '<div class="gbk-panel">'
+            '<div class="gbk-panel-title">Step 4 · Method</div>'
+            '<div class="gbk-note">How driver importance is computed. Random Forest recommended for most datasets.</div>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        method = st.selectbox(
+            "Method",
+            ["Random Forest", "Correlation", "Regression"],
+            label_visibility="collapsed",
+            key="dash_method"
+        )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        x_label = ", ".join(display_name(c) for c in x_vars) if x_vars else "All variables"
+        sg_label = f"Loop by {sg_var}" if use_sg and sg_var else "None"
+        y_label = display_name(y_selected) if y_selected else "Not selected"
+
+        st.markdown(f"""
+        <div class="gbk-panel" style="border-color:rgba(232,80,58,0.3);">
+          <div class="gbk-panel-title">Pipeline summary</div>
+          <div class="gbk-summary-grid">
+            <div><div class="gbk-summary-key">Y</div><div class="gbk-summary-val">{y_label}</div></div>
+            <div><div class="gbk-summary-key">X vars</div><div class="gbk-summary-val">{x_label}</div></div>
+            <div><div class="gbk-summary-key">Subgroup</div><div class="gbk-summary-val">{sg_label}</div></div>
+            <div><div class="gbk-summary-key">Method</div><div class="gbk-summary-val">{method}</div></div>
           </div>
         </div>
         """, unsafe_allow_html=True)
-    else:
-        top_left, top_right = st.columns([5, 1])
 
-        with top_left:
-            st.markdown(f"""
-            <div class="gbk-upload-box">
-              <div class="gbk-section-label">Current dataset</div>
-              <div class="gbk-note">
-                <b>{uploaded_filename}</b> is loaded and ready for analysis.
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
+        btn_col1, btn_col2 = st.columns(2)
+        with btn_col1:
+            run_clicked = st.form_submit_button("Run Analysis", use_container_width=True)
+        with btn_col2:
+            clear_clicked = st.form_submit_button("Clear Results", use_container_width=True)
 
-        with top_right:
-            st.write("")
-            st.write("")
-            if st.button("Clear Dataset", key="clear_dataset_btn"):
-                clear_uploaded_data()
-                st.rerun()
+    if clear_clicked:
+        st.session_state.analysis_result = None
 
-        components.html(PANEL_CSS + f"""
-        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px;">
-          <div class="gbk-panel" style="margin-bottom:0;">
-            <div class="gbk-panel-title">Respondents</div>
-            <div style="font-size:32px; font-weight:800; color:white; line-height:1;">{df_raw.shape[0]:,}</div>
-          </div>
-          <div class="gbk-panel" style="margin-bottom:0;">
-            <div class="gbk-panel-title">Total Columns</div>
-            <div style="font-size:32px; font-weight:800; color:white; line-height:1;">{df_raw.shape[1]:,}</div>
-          </div>
-          <div class="gbk-panel" style="margin-bottom:0;">
-            <div class="gbk-panel-title">Model-Ready</div>
-            <div style="font-size:32px; font-weight:800; color:white; line-height:1;">{df_num.shape[1]:,}</div>
-          </div>
-        </div>
-        <div style="background:rgba(232,80,58,0.07); border:1px solid rgba(232,80,58,0.2); border-radius:8px; padding:0.875rem 1.25rem; font-size:13px; color:rgba(255,255,255,0.55); line-height:1.7;">
-          <b style="color:#E8503A; font-weight:600;">Automated data prep:</b>
-          ID / date / meta fields excluded &nbsp;·&nbsp;
-          structurally empty columns dropped &nbsp;·&nbsp;
-          subgroup-driven sparse variables flagged separately &nbsp;·&nbsp;
-          remaining gaps filled with median &nbsp;·&nbsp;
-          constant columns dropped
-        </div>
-        """, height=220)
-
-        if df_num.shape[1] < 2:
-            st.error("Not enough usable numeric columns available after cleaning.")
+    if run_clicked:
+        if not y_selected:
+            st.error("Please select an outcome variable (Y).")
         else:
-            st.markdown('<div class="gbk-section-label">Select outcome metric</div>', unsafe_allow_html=True)
-            col_sel, col_btn = st.columns([4, 1])
+            with st.spinner(f"Running {method}..."):
+                result = run_analysis(df_num, df_raw, y_selected, x_vars or None, sg_var, method)
+            st.session_state.analysis_result = result
 
-            with col_sel:
-                target = st.selectbox(
-                    "",
-                    options=df_num.columns.tolist(),
-                    format_func=display_name,
-                    label_visibility="collapsed",
-                    key="target_select"
-                )
+    result = st.session_state.analysis_result
 
-            with col_btn:
-                run = st.button("Run Analysis", key="run_driver_model")
+    if result:
+        if "error" in result:
+            st.error(result["error"])
 
-            if run:
-                X = df_num.drop(columns=[target], errors="ignore")
-                y = df_num[target]
+        elif result["mode"] == "single":
+            render_bar_chart(result["top5"])
+            render_insights(result["target"], result["top5"])
+            render_next_steps(result["target"], result["top5"])
 
-                if X.shape[1] == 0:
-                    st.error("No predictor columns available after cleaning.")
+            with st.expander("Full driver ranking"):
+                render_detail_table(result["ranked"])
+
+        elif result["mode"] == "subgroup":
+            st.markdown(
+                f'<div class="gbk-panel">'
+                f'<div class="gbk-panel-title">Subgroup loop · {_auto_label(result["sg_var"])}</div>'
+                f'<div class="gbk-note">Running analysis separately for each level of <b>{_auto_label(result["sg_var"])}</b>.</div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+            for item in result["results"]:
+                if item["skipped"]:
+                    st.markdown(
+                        f'<div class="gbk-note" style="margin:6px 0;color:rgba(255,255,255,0.3);">'
+                        f"Skipping <b>{item['group']}</b> — only {item['n']} respondents.</div>",
+                        unsafe_allow_html=True
+                    )
                 else:
-                    with st.spinner("Running model..."):
-                        model = RandomForestRegressor(
-                            n_estimators=200,
-                            random_state=42,
-                            n_jobs=-1
-                        )
-                        model.fit(X, y)
+                    st.markdown(
+                        f'<div style="font-size:13px;font-weight:700;color:#E8503A;margin:1rem 0 0.25rem;'
+                        f'text-transform:uppercase;letter-spacing:1.5px;">'
+                        f'{_auto_label(result["sg_var"])}: {item["group"]} · n={item["n"]:,}</div>',
+                        unsafe_allow_html=True
+                    )
+                    render_bar_chart(item["top5"], title=f"Top Drivers — {item['group']}")
 
-                    importances = pd.Series(model.feature_importances_, index=X.columns)
-                    ranked = importances.sort_values(ascending=False)
-                    top5 = ranked.head(5)
+    with st.expander("Raw data preview"):
+        st.dataframe(df_raw.head(), use_container_width=True)
 
-                    render_bar_chart(top5)
-                    render_insights(target, top5)
-                    render_next_steps(target, top5)
-
-                    with st.expander("View detailed driver ranking"):
-                        render_detail_table(ranked)
-
-        with st.expander("View raw data preview"):
-            st.dataframe(df_raw.head(), use_container_width=True)
-
-        with st.expander("View cleaning details"):
-            components.html(PANEL_CSS + f"""
-            <div style="padding: 4px 0;">
-
-              <div style="margin-bottom:1.25rem;">
-                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
-                  Excluded ID / date / meta columns
-                </div>
-                <div>{pill_list(meta['excluded_cols'])}</div>
-              </div>
-
-              <div style="margin-bottom:1.25rem;">
-                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
-                  Dropped high-missing columns (&gt;40% missing)
-                </div>
-                <div>{pill_list(meta['drop_missing_cols'])}</div>
-              </div>
-
-              <div style="margin-bottom:1.25rem;">
-                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
-                  Subgroup candidate variables
-                </div>
-                <div>{pill_list(meta['subgroup_candidates'])}</div>
-              </div>
-
-              <div>
-                <div class="gbk-panel-title" style="margin-bottom:0.5rem;">
-                  Dropped constant columns
-                </div>
-                <div>{pill_list(meta['constant_cols'])}</div>
-              </div>
-
-            </div>
-            """, height=380)
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-def render_segments():
-    st.markdown("""
-    <div class="gbk-hero">
-      <div class="gbk-eyebrow">Advanced Analysis</div>
-      <h1>Segment<br>Explorer</h1>
-      <p>Review how drivers may differ across audience groups such as age, region, carrier, or other business-relevant segments.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="gbk-content">', unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="gbk-panel">
-      <div class="gbk-panel-title">Coming next</div>
-      <div class="gbk-note">
-        This module can be used for subgroup analysis, including side-by-side comparisons of importance patterns across customer segments.
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="gbk-card-grid">
-      <div class="gbk-card">
-        <div class="gbk-card-kicker">Example Cut</div>
-        <div class="gbk-card-text">Age</div>
-      </div>
-      <div class="gbk-card">
-        <div class="gbk-card-kicker">Example Cut</div>
-        <div class="gbk-card-text">Carrier</div>
-      </div>
-      <div class="gbk-card">
-        <div class="gbk-card-kicker">Example Cut</div>
-        <div class="gbk-card-text">Region</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-def render_metrics():
-    st.markdown("""
-    <div class="gbk-hero">
-      <div class="gbk-eyebrow">Reference Library</div>
-      <h1>Brand<br>Metrics</h1>
-      <p>Translate coded survey variables into business-readable labels for easier review, communication, and interpretation.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="gbk-content">', unsafe_allow_html=True)
-
-    metric_df = pd.DataFrame({
-        "Code": list(NAME_MAP.keys()),
-        "Business Label": list(NAME_MAP.values())
-    })
-    st.dataframe(metric_df, use_container_width=True)
-
-    st.markdown("""
-    <div class="gbk-panel">
-      <div class="gbk-panel-title">Why this matters</div>
-      <div class="gbk-note">
-        Marketing and insights teams typically work with brand-facing metric names, not raw questionnaire codes. This mapping layer makes outputs easier to interpret and present.
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-def render_help():
-    st.markdown("""
-    <div class="gbk-hero">
-      <div class="gbk-eyebrow">Documentation</div>
-      <h1>Help &<br>Method Notes</h1>
-      <p>Understand how the tool prepares data, identifies model-ready variables, and how to interpret driver-analysis results responsibly.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="gbk-content">', unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="gbk-panel">
-      <div class="gbk-panel-title">How to use</div>
-      <div class="gbk-note">
-        1. Open the <b>Driver Analysis</b> module.<br><br>
-        2. Upload an <b>.xlsx</b> dataset.<br><br>
-        3. Select the outcome metric you want to explain.<br><br>
-        4. Run the model and review the top associated drivers.<br><br>
-        5. Use the ranked output together with business context and research judgment.
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="gbk-panel">
-      <div class="gbk-panel-title">Interpretation note</div>
-      <div class="gbk-note">
-        Variable importance reflects model-based association, not guaranteed causality. Results should be used as directional guidance and validated with business knowledge, prior research, and methodological review.
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
+    with st.expander("Cleaning details"):
+        st.markdown(f"""
+        <div class="gbk-note">
+          <b>Excluded (ID/date/meta):</b><br>{pill_tags(meta['excluded_cols'])}<br><br>
+          <b>Dropped (high missing):</b><br>{pill_tags(meta['drop_missing_cols'])}<br><br>
+          <b>Subgroup candidates:</b><br>{pill_tags(meta['subgroup_candidates'])}<br><br>
+          <b>Dropped (constant):</b><br>{pill_tags(meta['constant_cols'])}
+        </div>
+        """, unsafe_allow_html=True)
 
 # =========================================================
-# App Router
+# App
 # =========================================================
-render_nav()
-
-if st.session_state.page == "dashboard":
-    render_dashboard()
-elif st.session_state.page == "driver":
-    render_driver_analysis()
-elif st.session_state.page == "segments":
-    render_segments()
-elif st.session_state.page == "metrics":
-    render_metrics()
-elif st.session_state.page == "help":
-    render_help()
+render_dashboard()
