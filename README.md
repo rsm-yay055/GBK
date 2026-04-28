@@ -13,7 +13,9 @@ associated with the outcome.
 
 - Four-step pipeline: select Y, select X, optional subgroup loop, 
   choose method
-- Three analysis methods: Random Forest, Correlation, Regression
+- Backend-connected method selection with 8 methods:
+  Correlation, Regression, Drop-one, Shapley / LMG, Johnson Relative Weights,
+  Random Forest, XGBoost, SHAP
 - Subgroup analysis: run the model separately for each level of a 
   categorical variable
 - Auto data cleaning: excludes ID columns, fills missing values, 
@@ -22,9 +24,26 @@ associated with the outcome.
 
 ## How to run locally
 
+Recommended:
+
+```bash
+uv sync
+uv run streamlit run GBK_app.py
+```
+
+Fallback:
+
+```bash
 pip install -r requirements.txt
 streamlit run GBK_app.py
+```
+
+Run integration tests:
+
+```bash
+uv run python -m unittest discover -s tests -v
+```
 
 ## Built with
 
-Python, Streamlit, scikit-learn, pandas
+Python, Streamlit, pandas, statsmodels, scikit-learn, XGBoost, SHAP
