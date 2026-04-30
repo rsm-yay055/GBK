@@ -1,31 +1,11 @@
 import re as _re
 
-import numpy as np
 import pandas as pd
 import streamlit as st
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import StandardScaler
 
-try:
-    import shap
-    SHAP_AVAILABLE = True
-except ImportError:
-    SHAP_AVAILABLE = False
+from kda_backend import ALL_METHODS, run_kda
 
-st.set_page_config(page_title="GBK Marketing Insights Suite", layout="wide")
-
-for k, v in {
-    "uploaded_df_raw": None,
-    "uploaded_df_num": None,
-    "uploaded_meta": None,
-    "uploaded_filename": None,
-    "analysis_result": None,
-}.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
-
-st.markdown("""
+PAGE_STYLE = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
 html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; }
@@ -80,7 +60,21 @@ div[data-testid="stDataFrame"] { background: #1a202c !important; border-radius: 
 .stMarkdown strong, .stMarkdown b { color: white !important; }
 div[data-testid="stCheckbox"] label span { color: rgba(255,255,255,0.75) !important; }
 </style>
-""", unsafe_allow_html=True)
+"""
+
+
+def configure_page():
+    st.set_page_config(page_title="GBK Marketing Insights Suite", layout="wide")
+    for k, v in {
+        "uploaded_df_raw": None,
+        "uploaded_df_num": None,
+        "uploaded_meta": None,
+        "uploaded_filename": None,
+        "analysis_result": None,
+    }.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+    st.markdown(PAGE_STYLE, unsafe_allow_html=True)
 
 NAME_MAP = {
     "C5_FINALr6": "Overall Satisfaction",
@@ -94,18 +88,28 @@ NAME_MAP = {
 }
 BAR_COLORS = ["#E8503A", "#9ab8d0", "#7a9db8", "#5a82a0", "#3a6788"]
 
+METHOD_LABELS = {
+    "correlation": "Correlation",
+    "regression": "Regression",
+    "drop_one": "Drop-one",
+    "shapley_lmg": "Shapley / LMG",
+    "johnson": "Johnson Relative Weights",
+    "random_forest": "Random Forest",
+    "xgboost": "XGBoost",
+    "shap": "SHAP",
+}
+
 METHOD_INFO = {
-    "SHAP (Recommended)": {
+    "shap": {
         "title": "SHAP — Shapley Values",
         "recommended": True,
         "desc": (
-            "Best for most datasets. Uses Shapley values to fairly distribute each variable's contribution "
-            "to the predicted outcome. Works with any model, captures non-linear effects, and is the "
-            "industry-preferred method for interpretable driver analysis. Start here."
+            "Ranks drivers by average absolute feature contribution after fitting an XGBoost model. "
+            "Useful for non-linear patterns and client-friendly variable importance summaries."
         ),
         "note": "Mean |SHAP value| — average absolute impact on outcome.",
     },
-    "Random Forest": {
+    "random_forest": {
         "title": "Random Forest Importance",
         "recommended": False,
         "desc": (
@@ -113,9 +117,9 @@ METHOD_INFO = {
             "much they reduce prediction error. Reliable and fast, but scores can be biased toward "
             "high-cardinality variables. Good as a comparison check against SHAP."
         ),
-        "note": "Random Forest feature importance — proportion of variance explained.",
+        "note": "Permutation importance from Random Forest.",
     },
-    "Correlation": {
+    "correlation": {
         "title": "Correlation (Pearson |r|)",
         "recommended": False,
         "desc": (
@@ -125,7 +129,7 @@ METHOD_INFO = {
         ),
         "note": "Pearson |r| — absolute linear correlation with outcome.",
     },
-    "Regression": {
+    "regression": {
         "title": "Standardized Regression Coefficients",
         "recommended": False,
         "desc": (
@@ -134,6 +138,30 @@ METHOD_INFO = {
             "(multicollinearity)."
         ),
         "note": "Standardized coefficient |β| — linear importance.",
+    },
+    "drop_one": {
+        "title": "Drop-one Usefulness",
+        "recommended": False,
+        "desc": "Compares the full model against reduced models that remove one driver at a time.",
+        "note": "Full model score minus reduced model score.",
+    },
+    "shapley_lmg": {
+        "title": "Shapley / LMG",
+        "recommended": False,
+        "desc": "Allocates linear model explained variance across drivers. Python v1 supports continuous outcomes.",
+        "note": "LMG share of model R-squared.",
+    },
+    "johnson": {
+        "title": "Johnson Relative Weights",
+        "recommended": False,
+        "desc": "Decomposes linear model explanatory power under correlated predictors. Python v1 supports continuous outcomes.",
+        "note": "Johnson relative weight.",
+    },
+    "xgboost": {
+        "title": "XGBoost Importance",
+        "recommended": False,
+        "desc": "Fits a gradient boosted tree model and ranks drivers by gain-based feature importance.",
+        "note": "XGBoost gain importance.",
     },
 }
 
@@ -175,31 +203,6 @@ def prepare_model_data(df):
         "subgroup_candidates": subgroup_candidates,
         "constant_cols": constant_cols,
     }
-
-def compute_importance(X, y, method):
-    if method == "SHAP (Recommended)":
-        if not SHAP_AVAILABLE:
-            st.warning("shap package not installed — falling back to Random Forest. Run: pip install shap")
-            method = "Random Forest"
-        else:
-            model = GradientBoostingRegressor(n_estimators=100, random_state=42)
-            model.fit(X, y)
-            explainer = shap.TreeExplainer(model)
-            shap_values = explainer.shap_values(X)
-            imp = pd.Series(np.abs(shap_values).mean(axis=0), index=X.columns)
-            return imp.sort_values(ascending=False)
-    if method == "Random Forest":
-        model = RandomForestRegressor(n_estimators=200, random_state=42, n_jobs=-1)
-        model.fit(X, y)
-        imp = pd.Series(model.feature_importances_, index=X.columns)
-    elif method == "Correlation":
-        imp = pd.Series({c: abs(X[c].corr(y)) for c in X.columns})
-    else:
-        scaler = StandardScaler()
-        Xs = scaler.fit_transform(X)
-        model = LinearRegression().fit(Xs, y)
-        imp = pd.Series(np.abs(model.coef_), index=X.columns)
-    return imp.sort_values(ascending=False)
 
 def pill_tags(items):
     if not items:
@@ -302,28 +305,83 @@ def render_detail_table(ranked):
         unsafe_allow_html=True
     )
 
-def run_analysis(df_num, df_raw, target, x_vars, sg_var, method):
+def _ranking_to_series(ranking_table):
+    return pd.Series(
+        ranking_table["mean_method_index"].to_numpy(),
+        index=ranking_table["driver"],
+    ).sort_values(ascending=False)
+
+def run_analysis(df_num, df_raw, target, x_vars, sg_var, methods):
     predictors = [c for c in (x_vars if x_vars else df_num.columns) if c != target and c in df_num.columns]
     if not predictors:
         return {"error": "No valid predictor columns available."}
+    if not methods:
+        return {"error": "Select at least one method."}
+
+    model_df = df_num[[target, *predictors]].copy()
+    if sg_var:
+        if sg_var not in df_raw.columns:
+            return {"error": f"Subgroup variable '{sg_var}' not found."}
+        model_df[sg_var] = df_raw[sg_var]
+
+    method_params = {
+        "random_forest": {"n_estimators": 300, "n_repeats": 8},
+        "xgboost": {"n_estimators": 150, "max_depth": 3},
+        "shap": {"n_estimators": 150, "max_depth": 3},
+    }
+
+    try:
+        kda_result = run_kda(
+            model_df,
+            y_var=target,
+            x_vars=predictors,
+            methods=methods,
+            subgroup=sg_var,
+            method_params=method_params,
+        )
+    except Exception as exc:
+        return {"error": str(exc)}
+
+    ranked = _ranking_to_series(kda_result.ranking_table)
     if not sg_var:
-        X, y = df_num[predictors], df_num[target]
-        ranked = compute_importance(X, y, method)
-        return {"mode": "single", "target": target, "method": method, "ranked": ranked, "top5": ranked.head(5)}
-    if sg_var not in df_raw.columns:
-        return {"error": f"Subgroup variable '{sg_var}' not found."}
+        return {
+            "mode": "single",
+            "target": target,
+            "methods": methods,
+            "ranked": ranked,
+            "top5": ranked.head(5),
+            "kda_result": kda_result,
+            "warnings": kda_result.warnings,
+        }
+
     subgroup_results = []
-    for gval in sorted(df_raw[sg_var].dropna().unique()):
-        mask = df_raw[sg_var] == gval
-        grp = df_num.loc[df_num.index.isin(df_raw[mask].index)]
-        if grp.shape[0] < 30:
-            subgroup_results.append({"group": gval, "n": grp.shape[0], "skipped": True, "reason": "Too few respondents"})
-            continue
-        ranked = compute_importance(grp[predictors], grp[target], method)
-        subgroup_results.append({"group": gval, "n": grp.shape[0], "skipped": False, "ranked": ranked, "top5": ranked.head(5)})
-    return {"mode": "subgroup", "target": target, "method": method, "sg_var": sg_var, "results": subgroup_results}
+    for group, subgroup_result in (kda_result.subgroup_results or {}).items():
+        subgroup_ranked = _ranking_to_series(subgroup_result.ranking_table)
+        subgroup_n = subgroup_result.diagnostics.loc[
+            subgroup_result.diagnostics["metric"] == "rows_used",
+            "value",
+        ].iloc[0]
+        subgroup_results.append(
+            {
+                "group": group,
+                "n": subgroup_n,
+                "skipped": False,
+                "ranked": subgroup_ranked,
+                "top5": subgroup_ranked.head(5),
+            }
+        )
+    return {
+        "mode": "subgroup",
+        "target": target,
+        "methods": methods,
+        "sg_var": sg_var,
+        "results": subgroup_results,
+        "warnings": kda_result.warnings,
+        "kda_result": kda_result,
+    }
 
 def render_dashboard():
+    configure_page()
     st.markdown("""
     <div class="gbk-hero">
       <div class="gbk-eyebrow">GBK Toolbox</div>
@@ -406,19 +464,27 @@ def render_dashboard():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Step 4 — Method with info box
-        method_options = list(METHOD_INFO.keys())
-        if not SHAP_AVAILABLE:
-            method_options = [m for m in method_options if m != "SHAP (Recommended)"]
-
+        # Step 4 — Method checkboxes with info boxes
         st.markdown(
-            '<div class="gbk-panel"><div class="gbk-panel-title">Step 4 · Method</div>'
-            '<div class="gbk-note">Choose how driver importance is calculated. '
-            'An explanation of the selected method appears below the dropdown.</div></div>',
+            '<div class="gbk-panel"><div class="gbk-panel-title">Step 4 · Methods</div>'
+            '<div class="gbk-note">Choose one or more driver-analysis methods. '
+            'The backend will run selected methods and return a combined ranking.</div></div>',
             unsafe_allow_html=True
         )
-        method = st.selectbox("Method", method_options, label_visibility="collapsed", key="dash_method")
-        render_method_info_box(method)
+        default_methods = {"correlation", "regression", "random_forest", "xgboost", "shap"}
+        selected_methods = []
+        method_cols = st.columns(2)
+        for idx, method_key in enumerate(ALL_METHODS):
+            with method_cols[idx % 2]:
+                checked = st.checkbox(
+                    METHOD_LABELS.get(method_key, method_key),
+                    value=method_key in default_methods,
+                    key=f"dash_method_{method_key}",
+                )
+            if checked:
+                selected_methods.append(method_key)
+        for method_key in selected_methods:
+            render_method_info_box(method_key)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -426,6 +492,7 @@ def render_dashboard():
         x_label = ", ".join(display_name(c) for c in x_vars) if x_vars else "All variables"
         sg_label = f"Loop by {sg_var}" if use_sg and sg_var else "None"
         y_label = display_name(y_selected) if y_selected else "Not selected"
+        method_label = ", ".join(METHOD_LABELS.get(m, m) for m in selected_methods) if selected_methods else "None"
         st.markdown(f"""
         <div class="gbk-panel" style="border-color:rgba(232,80,58,0.3);">
           <div class="gbk-panel-title">Pipeline summary</div>
@@ -433,7 +500,7 @@ def render_dashboard():
             <div><div class="gbk-summary-key">Y</div><div class="gbk-summary-val">{y_label}</div></div>
             <div><div class="gbk-summary-key">X vars</div><div class="gbk-summary-val">{x_label}</div></div>
             <div><div class="gbk-summary-key">Subgroup</div><div class="gbk-summary-val">{sg_label}</div></div>
-            <div><div class="gbk-summary-key">Method</div><div class="gbk-summary-val">{method}</div></div>
+            <div><div class="gbk-summary-key">Methods</div><div class="gbk-summary-val">{method_label}</div></div>
           </div>
         </div>
         """, unsafe_allow_html=True)
@@ -451,8 +518,8 @@ def render_dashboard():
         if not y_selected:
             st.error("Please select an outcome variable (Y).")
         else:
-            with st.spinner(f"Running {method}..."):
-                result = run_analysis(df_num, df_raw, y_selected, x_vars or None, sg_var, method)
+            with st.spinner(f"Running {method_label}..."):
+                result = run_analysis(df_num, df_raw, y_selected, x_vars or None, sg_var, selected_methods)
             st.session_state.analysis_result = result
 
     result = st.session_state.analysis_result
@@ -461,19 +528,29 @@ def render_dashboard():
         if "error" in result:
             st.error(result["error"])
         elif result["mode"] == "single":
-            render_bar_chart(result["top5"], method_key=result["method"])
+            note_method = result["methods"][0] if len(result["methods"]) == 1 else ""
+            render_bar_chart(result["top5"], method_key=note_method)
             render_insights(result["target"], result["top5"])
             render_next_steps(result["target"], result["top5"])
+            for warning in result.get("warnings", []):
+                st.warning(warning)
             with st.expander("Full driver ranking"):
                 render_detail_table(result["ranked"])
+                st.dataframe(result["kda_result"].ranking_table, use_container_width=True)
+            with st.expander("Method diagnostics"):
+                st.dataframe(result["kda_result"].diagnostics, use_container_width=True)
         elif result["mode"] == "subgroup":
             st.markdown(f'<div class="gbk-panel"><div class="gbk-panel-title">Subgroup loop · {_auto_label(result["sg_var"])}</div><div class="gbk-note">Running analysis separately for each level of <b>{_auto_label(result["sg_var"])}</b>.</div></div>', unsafe_allow_html=True)
+            for warning in result.get("warnings", []):
+                st.warning(warning)
             for item in result["results"]:
                 if item["skipped"]:
                     st.markdown(f'<div class="gbk-note" style="margin:6px 0;color:rgba(255,255,255,0.3);">Skipping <b>{item["group"]}</b> — only {item["n"]} respondents.</div>', unsafe_allow_html=True)
                 else:
                     st.markdown(f'<div style="font-size:13px;font-weight:700;color:#E8503A;margin:1rem 0 0.25rem;text-transform:uppercase;letter-spacing:1.5px;">{_auto_label(result["sg_var"])}: {item["group"]} · n={item["n"]:,}</div>', unsafe_allow_html=True)
-                    render_bar_chart(item["top5"], title=f"Top Drivers — {item['group']}", method_key=result["method"])
+                    render_bar_chart(item["top5"], title=f"Top Drivers — {item['group']}", method_key="")
+            with st.expander("Combined ranking table"):
+                st.dataframe(result["kda_result"].ranking_table, use_container_width=True)
 
     with st.expander("Raw data preview"):
         st.dataframe(df_raw.head(), use_container_width=True)
@@ -488,4 +565,5 @@ def render_dashboard():
         </div>
         """, unsafe_allow_html=True)
 
-render_dashboard()
+if __name__ == "__main__":
+    render_dashboard()
