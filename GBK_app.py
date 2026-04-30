@@ -9,56 +9,133 @@ PAGE_STYLE = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
 html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; }
-.stApp { background-color: #2d3748 !important; }
+
+/* ===== GBK Brand Colors =====
+Dark Blue  #3B4954
+Red        #F76362
+Light Blue #C7D8E4
+Blue       #789FC0
+Light Red  #F9BDBC
+White      #FFFFFF
+============================= */
+
+.stApp { background-color: #3B4954 !important; }
 #MainMenu, footer, header { visibility: hidden; }
 .block-container { padding: 1rem 2rem 2rem !important; max-width: 100% !important; }
-.gbk-hero { background: #1a202c; padding: 2rem 2rem 1.75rem; border-radius: 10px; margin-bottom: 1.5rem; }
-.gbk-eyebrow { font-size: 11px; color: #E8503A; letter-spacing: 3px; text-transform: uppercase; font-weight: 600; margin-bottom: 0.5rem; }
-.gbk-hero h1 { font-size: 36px; font-weight: 900; color: white; line-height: 1.05; text-transform: uppercase; letter-spacing: -1px; margin: 0 0 0.5rem; }
-.gbk-hero p { font-size: 13px; color: rgba(255,255,255,0.45); line-height: 1.7; margin: 0; }
-.gbk-label { font-size: 10px; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 2.5px; font-weight: 700; margin-bottom: 0.4rem; }
-.gbk-panel { background: #1a202c; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
-.gbk-panel-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 2.5px; color: rgba(255,255,255,0.3); margin-bottom: 0.75rem; }
-.gbk-note { font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.7; }
-.gbk-stat { font-size: 30px; font-weight: 800; color: white; line-height: 1; }
-.gbk-card { background: #1a202c; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); padding: 1.25rem 1.5rem; }
-.gbk-card-kicker { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 2.5px; color: rgba(255,255,255,0.3); margin-bottom: 0.6rem; }
-.gbk-card-text { font-size: 18px; font-weight: 800; color: white; line-height: 1.2; }
+
+.gbk-hero { background: #2F3F4B; padding: 2rem 2rem 1.75rem; border-radius: 10px; margin-bottom: 1.5rem; }
+.gbk-eyebrow { font-size: 11px; color: #F76362; letter-spacing: 3px; text-transform: uppercase; font-weight: 600; margin-bottom: 0.5rem; }
+.gbk-hero h1 { font-size: 36px; font-weight: 900; color: #FFFFFF; line-height: 1.05; text-transform: uppercase; letter-spacing: -1px; margin: 0 0 0.5rem; }
+.gbk-hero p { font-size: 13px; color: rgba(255,255,255,0.82); line-height: 1.7; margin: 0; }
+
+.gbk-label { font-size: 10px; color: rgba(255,255,255,0.70); text-transform: uppercase; letter-spacing: 2.5px; font-weight: 700; margin-bottom: 0.4rem; }
+.gbk-panel { background: #334651; border-radius: 10px; border: 1px solid rgba(199,216,228,0.18); padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+.gbk-panel-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 2.5px; color: rgba(255,255,255,0.62); margin-bottom: 0.75rem; }
+.gbk-note { font-size: 13px; color: rgba(255,255,255,0.84); line-height: 1.7; }
+.gbk-stat { font-size: 30px; font-weight: 800; color: #FFFFFF; line-height: 1; }
+.gbk-card { background: #334651; border-radius: 10px; border: 1px solid rgba(199,216,228,0.18); padding: 1.25rem 1.5rem; }
+.gbk-card-kicker { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 2.5px; color: rgba(255,255,255,0.58); margin-bottom: 0.6rem; }
+.gbk-card-text { font-size: 18px; font-weight: 800; color: #FFFFFF; line-height: 1.2; }
+
 .gbk-bar-wrap { margin-bottom: 10px; }
-.gbk-bar-label { font-size: 12px; color: rgba(255,255,255,0.65); margin-bottom: 3px; }
+.gbk-bar-label { font-size: 12px; color: rgba(255,255,255,0.90); margin-bottom: 3px; }
 .gbk-bar-row { display: flex; align-items: center; gap: 10px; }
-.gbk-bar-track { flex: 1; background: rgba(255,255,255,0.07); border-radius: 4px; height: 8px; overflow: hidden; }
+.gbk-bar-track { flex: 1; background: rgba(255,255,255,0.12); border-radius: 4px; height: 8px; overflow: hidden; }
 .gbk-bar-fill { height: 100%; border-radius: 4px; }
-.gbk-bar-val { font-size: 11px; color: rgba(255,255,255,0.3); width: 48px; text-align: right; }
-.gbk-disclaimer { font-size: 11px; color: rgba(255,255,255,0.2); margin-top: 0.75rem; font-style: italic; }
-.gbk-insight { background: rgba(255,255,255,0.03); border-radius: 6px; padding: 0.75rem 1rem; border-left: 3px solid rgba(255,255,255,0.12); font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.6; margin-bottom: 8px; }
-.gbk-insight b { color: white; }
-.gbk-insight-red { border-left-color: #E8503A; }
-.gbk-insight-blue { border-left-color: #7a9db8; }
-.gbk-step-item { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.6; margin-bottom: 10px; }
-.gbk-step-num { background: #E8503A; color: white; font-size: 10px; font-weight: 700; min-width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-top: 2px; flex-shrink: 0; }
-.gbk-step-item b { color: rgba(255,255,255,0.85); }
+.gbk-bar-val { font-size: 11px; color: rgba(255,255,255,0.68); width: 48px; text-align: right; }
+.gbk-disclaimer { font-size: 11px; color: rgba(255,255,255,0.52); margin-top: 0.75rem; font-style: italic; }
+
+.gbk-insight { background: rgba(255,255,255,0.05); border-radius: 6px; padding: 0.75rem 1rem; border-left: 3px solid rgba(199,216,228,0.24); font-size: 13px; color: rgba(255,255,255,0.84); line-height: 1.6; margin-bottom: 8px; }
+.gbk-insight b { color: #FFFFFF; }
+.gbk-insight-red { border-left-color: #F76362; }
+.gbk-insight-blue { border-left-color: #789FC0; }
+
+.gbk-step-item { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: rgba(255,255,255,0.84); line-height: 1.6; margin-bottom: 10px; }
+.gbk-step-num { background: #F76362; color: #FFFFFF; font-size: 10px; font-weight: 700; min-width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-top: 2px; flex-shrink: 0; }
+.gbk-step-item b { color: #FFFFFF; }
+
 .gbk-summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.gbk-summary-key { font-size: 10px; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 4px; }
-.gbk-summary-val { font-size: 13px; color: white; font-weight: 600; }
-.gbk-tag { display: inline-block; background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.7); font-size: 12px; padding: 2px 9px; border-radius: 4px; margin: 2px; }
-.gbk-method-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px 14px; margin-top: 8px; }
-.gbk-method-title { font-size: 13px; color: white; font-weight: 700; margin-bottom: 4px; }
-.gbk-method-desc { font-size: 12px; color: rgba(255,255,255,0.5); line-height: 1.55; }
-.gbk-shap-badge { display: inline-block; background: rgba(232,80,58,0.15); border: 1px solid rgba(232,80,58,0.35); color: #E8503A; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; padding: 1px 7px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
-.gbk-input-warning { font-size: 11px; color: #E8503A; margin-top: 6px; font-weight: 600; }
-div[data-testid="stButton"] > button, div[data-testid="stFormSubmitButton"] > button { background: #E8503A !important; color: white !important; border: none !important; border-radius: 8px !important; font-size: 12px !important; font-weight: 700 !important; letter-spacing: 1.2px !important; text-transform: uppercase !important; padding: 0.6rem 1rem !important; }
-div[data-testid="stButton"] > button:hover, div[data-testid="stFormSubmitButton"] > button:hover { background: #d4432e !important; }
-div[data-baseweb="select"] > div, div[data-testid="stSelectbox"] > div > div { background: #1a202c !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 8px !important; color: white !important; }
-div[data-testid="stMultiSelect"] > div { background: #1a202c !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 8px !important; }
-div[data-testid="stFileUploader"] section { background: #1a202c !important; border: 1px dashed rgba(255,255,255,0.18) !important; border-radius: 10px !important; }
-div[data-testid="stFileUploader"] small, div[data-testid="stFileUploader"] span, div[data-testid="stFileUploader"] label, div[data-testid="stFileUploader"] p { color: rgba(255,255,255,0.6) !important; }
-details { background: #1a202c !important; border: 1px solid rgba(255,255,255,0.06) !important; border-radius: 10px !important; margin-bottom: 1rem !important; }
-details summary { font-size: 12px !important; color: rgba(255,255,255,0.4) !important; padding: 0.75rem 1rem !important; }
-div[data-testid="stDataFrame"] { background: #1a202c !important; border-radius: 8px !important; }
-.stMarkdown p, .stMarkdown li { color: rgba(255,255,255,0.75) !important; }
-.stMarkdown strong, .stMarkdown b { color: white !important; }
-div[data-testid="stCheckbox"] label span { color: rgba(255,255,255,0.75) !important; }
+.gbk-summary-key { font-size: 10px; color: rgba(255,255,255,0.58); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 4px; }
+.gbk-summary-val { font-size: 13px; color: #FFFFFF; font-weight: 600; }
+
+.gbk-tag { display: inline-block; background: rgba(120,159,192,0.20); color: #C7D8E4; font-size: 12px; padding: 2px 9px; border-radius: 4px; margin: 2px; }
+.gbk-method-box { background: rgba(255,255,255,0.05); border: 1px solid rgba(199,216,228,0.18); border-radius: 8px; padding: 10px 14px; margin-top: 8px; }
+.gbk-method-title { font-size: 13px; color: #FFFFFF; font-weight: 700; margin-bottom: 4px; }
+.gbk-method-desc { font-size: 12px; color: rgba(255,255,255,0.80); line-height: 1.55; }
+.gbk-shap-badge { display: inline-block; background: rgba(247,99,98,0.16); border: 1px solid rgba(247,99,98,0.42); color: #F76362; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; padding: 1px 7px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
+.gbk-input-warning { font-size: 11px; color: #F76362; margin-top: 6px; font-weight: 600; }
+
+div[data-testid="stButton"] > button,
+div[data-testid="stFormSubmitButton"] > button {
+  background: #F76362 !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: 1.2px !important;
+  text-transform: uppercase !important;
+  padding: 0.6rem 1rem !important;
+}
+div[data-testid="stButton"] > button:hover,
+div[data-testid="stFormSubmitButton"] > button:hover {
+  background: #e55a59 !important;
+}
+
+div[data-baseweb="select"] > div,
+div[data-testid="stSelectbox"] > div > div {
+  background: #334651 !important;
+  border: 1px solid rgba(199,216,228,0.24) !important;
+  border-radius: 8px !important;
+  color: #FFFFFF !important;
+}
+div[data-testid="stMultiSelect"] > div {
+  background: #334651 !important;
+  border: 1px solid rgba(199,216,228,0.24) !important;
+  border-radius: 8px !important;
+}
+
+div[data-testid="stFileUploader"] section {
+  background: #334651 !important;
+  border: 1px dashed rgba(199,216,228,0.28) !important;
+  border-radius: 10px !important;
+}
+div[data-testid="stFileUploader"] small,
+div[data-testid="stFileUploader"] span,
+div[data-testid="stFileUploader"] label,
+div[data-testid="stFileUploader"] p {
+  color: rgba(255,255,255,0.80) !important;
+}
+
+details {
+  background: #334651 !important;
+  border: 1px solid rgba(199,216,228,0.18) !important;
+  border-radius: 10px !important;
+  margin-bottom: 1rem !important;
+}
+details summary {
+  font-size: 12px !important;
+  color: rgba(255,255,255,0.76) !important;
+  padding: 0.75rem 1rem !important;
+}
+
+div[data-testid="stDataFrame"] { background: #334651 !important; border-radius: 8px !important; }
+
+.stMarkdown p, .stMarkdown li { color: rgba(255,255,255,0.84) !important; }
+.stMarkdown strong, .stMarkdown b { color: #FFFFFF !important; }
+
+/* Checkbox text + tick */
+div[data-testid="stCheckbox"] { margin-bottom: 0.25rem; }
+div[data-testid="stCheckbox"] label,
+div[data-testid="stCheckbox"] label p,
+div[data-testid="stCheckbox"] label span,
+div[data-testid="stCheckbox"] [data-testid="stMarkdownContainer"] p {
+  color: #C7D8E4 !important;
+  opacity: 1 !important;
+}
+div[data-testid="stCheckbox"] input:checked {
+  accent-color: #F76362 !important;
+}
 </style>
 """
 
@@ -86,7 +163,7 @@ NAME_MAP = {
     "C11": "Brand Trust",
     "C12": "Retailer",
 }
-BAR_COLORS = ["#E8503A", "#9ab8d0", "#7a9db8", "#5a82a0", "#3a6788"]
+BAR_COLORS = ["#F76362", "#C7D8E4", "#789FC0", "#F9BDBC", "#5E7486"]
 
 METHOD_LABELS = {
     "correlation": "Correlation",
