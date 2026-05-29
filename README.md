@@ -5,7 +5,7 @@ tool is designed for consultants and insight teams who need a clear, repeatable
 way to identify which survey measures are most strongly associated with an
 outcome such as consideration, preference, trust, or satisfaction.
 
-Live app: https://pww9k9yv8na2dnlcr6pdfs.streamlit.app/
+Live app: https://gbkkeydrivers.streamlit.app/
 
 ## Overview
 

@@ -1064,6 +1064,28 @@ def apply_gbk_altair_theme(chart):
     )
 
 
+def _chart_x_values(chart_df):
+    return pd.concat(
+        [
+            chart_df["score"],
+            chart_df["ci_lower"].dropna(),
+            chart_df["ci_upper"].dropna(),
+        ],
+        ignore_index=True,
+    )
+
+
+def _score_axis_domain(finite_values, pad_fraction=0.10):
+    values = finite_values.replace([np.inf, -np.inf], np.nan).dropna()
+    if values.empty:
+        return [0.0, 100.0]
+    max_x = max(0.0, float(values.max()))
+    padded_max = max(max_x * (1.0 + pad_fraction), 5.0)
+    step = 10.0 if padded_max > 100.0 else 5.0
+    nice_max = float(np.ceil(padded_max / step) * step)
+    return [0.0, nice_max]
+
+
 def build_interactive_driver_chart(importance_table, methods, x_domain_override=None):
     chart_df = build_interactive_chart_data(importance_table, methods)
     if chart_df.empty:
@@ -1072,25 +1094,7 @@ def build_interactive_driver_chart(importance_table, methods, x_domain_override=
     domain = [METHOD_LABELS.get(method, method) for method in methods]
     chart_colors = [METHOD_COLORS.get(method, "#789FC0") for method in methods]
     y_sort = _driver_axis_sort(chart_df)
-    finite_values = (
-        pd.concat(
-            [
-                chart_df["score"],
-                chart_df["ci_lower"].dropna(),
-                chart_df["ci_upper"].dropna(),
-            ],
-            ignore_index=True,
-        )
-        .replace([np.inf, -np.inf], np.nan)
-        .dropna()
-    )
-    if finite_values.empty:
-        x_domain = [0, 100]
-    else:
-        min_x = min(0.0, float(finite_values.min()))
-        max_x = max(100.0, float(finite_values.max()))
-        pad = max((max_x - min_x) * 0.08, 5.0)
-        x_domain = [min_x - pad, max_x + pad]
+    x_domain = _score_axis_domain(_chart_x_values(chart_df))
     if x_domain_override:
         x_domain = [float(x_domain_override[0]), float(x_domain_override[1])]
     driver_bands = pd.DataFrame(
@@ -1323,44 +1327,6 @@ def render_controlled_interval_chart(
                 st.altair_chart(chart, width="stretch", theme=None)
             render_chart_disclaimer(kda_result, active_methods)
     return active_methods
-
-
-def chart_range_control(kda_result, methods, key_prefix):
-    chart_df = build_interactive_chart_data(kda_result.importance_table, methods)
-    if chart_df.empty:
-        return None
-    finite_values = (
-        pd.concat(
-            [
-                chart_df["score"],
-                chart_df["ci_lower"].dropna(),
-                chart_df["ci_upper"].dropna(),
-            ],
-            ignore_index=True,
-        )
-        .replace([np.inf, -np.inf], np.nan)
-        .dropna()
-    )
-    if finite_values.empty:
-        return None
-    min_x = min(0.0, float(finite_values.min()))
-    max_x = max(100.0, float(finite_values.max()))
-    pad = max((max_x - min_x) * 0.12, 10.0)
-    full_domain = (float(np.floor(min_x - pad)), float(np.ceil(max_x + pad)))
-    with st.expander("Chart display controls"):
-        auto_range = st.checkbox(
-            "Keep automatic chart scale", value=True, key=f"{key_prefix}_auto_range"
-        )
-        if auto_range:
-            return None
-        return st.slider(
-            "Visible score range",
-            min_value=full_domain[0],
-            max_value=full_domain[1],
-            value=full_domain,
-            step=1.0,
-            key=f"{key_prefix}_x_range",
-        )
 
 
 def render_results_guide(target, methods, subgroup_label=None):
@@ -2258,15 +2224,11 @@ def render_dashboard():
                 result["methods"], "single_chart_methods"
             )
             render_results_guide(result["target"], active_methods)
-            chart_x_domain = chart_range_control(
-                result["kda_result"], active_methods, "single_chart"
-            )
             render_controlled_interval_chart(
                 result["kda_result"],
                 result["methods"],
                 "single_chart_methods",
                 title="Driver ranking chart",
-                chart_x_domain=chart_x_domain,
             )
             render_table_download(
                 "Download Main Results Table CSV",
@@ -2387,9 +2349,6 @@ def render_dashboard():
                         "subgroup_status_table.csv",
                         dependent_variable=result["target"],
                     )
-            chart_x_domain = chart_range_control(
-                result["kda_result"], active_methods, "subgroup_chart"
-            )
             for item in result["results"]:
                 if item["skipped"]:
                     reason = (
@@ -2402,6 +2361,7 @@ def render_dashboard():
                         unsafe_allow_html=True,
                     )
                 else:
+                    group_file = _re.sub(r"[^a-zA-Z0-9_]+", "_", str(item["group"])).strip("_")
                     st.markdown(
                         f'<div style="font-size:13px;font-weight:700;color:#E8503A;margin:1rem 0 0.25rem;text-transform:uppercase;letter-spacing:1.5px;">{_auto_label(result["sg_var"])}: {item["group"]} · n={item["n"]:,}</div>',
                         unsafe_allow_html=True,
@@ -2410,14 +2370,12 @@ def render_dashboard():
                         item["kda_result"],
                         active_methods,
                         title=f"Driver ranking — {item['group']}",
-                        chart_x_domain=chart_x_domain,
                     )
                     st.markdown(
                         '<div class="gbk-mini-note">Detailed scores for this group. Use the chart for the quick read and the table for appendix or QA detail.</div>',
                         unsafe_allow_html=True,
                     )
                     st.dataframe(_display_table(item["export_table"]), width="stretch")
-                    group_file = _re.sub(r"[^a-zA-Z0-9_]+", "_", str(item["group"])).strip("_")
                     render_table_download(
                         f'Download {item["group"]} Score Table CSV',
                         item["export_table"],
