@@ -228,7 +228,7 @@ class KDAFrontendIntegrationTests(unittest.TestCase):
         pd.testing.assert_frame_equal(first["export_table"][seed_cols], second["export_table"][seed_cols])
         self.assertFalse(first["export_table"][seed_cols].equals(third["export_table"][seed_cols]))
 
-    def test_run_analysis_does_not_bootstrap_heavy_methods_by_default(self):
+    def test_run_analysis_bootstraps_every_selected_method(self):
         rng = np.random.default_rng(469)
         n = 72
         df_num = pd.DataFrame(
@@ -254,14 +254,11 @@ class KDAFrontendIntegrationTests(unittest.TestCase):
         )
 
         self.assertTrue(result["include_bootstrap"])
-        self.assertEqual(result["bootstrap_methods"], ["correlation", "regression"])
-        for method in ["correlation", "regression"]:
+        # Bootstrap now runs on every selected method, including the heavy ones.
+        self.assertEqual(result["bootstrap_methods"], methods)
+        for method in methods:
             self.assertIn(f"{method}_ci_lower", result["export_table"].columns)
             self.assertIn(f"{method}_ci_upper", result["export_table"].columns)
-        for method in HEAVY_BOOTSTRAP_METHODS:
-            self.assertIn(method, result["export_table"].columns)
-            self.assertNotIn(f"{method}_ci_lower", result["export_table"].columns)
-            self.assertNotIn(f"{method}_ci_upper", result["export_table"].columns)
 
     def test_prepare_model_data_excludes_brand_lookup_columns_from_subgroup_candidates(self):
         df = pd.DataFrame(
