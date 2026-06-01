@@ -169,6 +169,65 @@ class KDAFrontendIntegrationTests(unittest.TestCase):
         self.assertIn("correlation_ci_lower", result["export_table"].columns)
         self.assertIn("regression_ci_lower", result["export_table"].columns)
 
+    def test_run_analysis_uses_user_supplied_bootstrap_seed(self):
+        rng = np.random.default_rng(476)
+        n = 72
+        df_num = pd.DataFrame(
+            {
+                "consideration": rng.normal(size=n),
+                "trust": rng.normal(size=n),
+                "value": rng.normal(size=n),
+                "style": rng.normal(size=n),
+            }
+        )
+        df_num["consideration"] = 1.5 * df_num["trust"] + rng.normal(scale=0.2, size=n)
+        df_raw = df_num.copy()
+
+        first = run_analysis(
+            df_num,
+            df_raw,
+            target="consideration",
+            x_vars=["trust", "value", "style"],
+            sg_var=None,
+            methods=["correlation", "regression"],
+            include_bootstrap=True,
+            bootstrap_resamples=30,
+            bootstrap_seed=2026,
+        )
+        second = run_analysis(
+            df_num,
+            df_raw,
+            target="consideration",
+            x_vars=["trust", "value", "style"],
+            sg_var=None,
+            methods=["correlation", "regression"],
+            include_bootstrap=True,
+            bootstrap_resamples=30,
+            bootstrap_seed=2026,
+        )
+        third = run_analysis(
+            df_num,
+            df_raw,
+            target="consideration",
+            x_vars=["trust", "value", "style"],
+            sg_var=None,
+            methods=["correlation", "regression"],
+            include_bootstrap=True,
+            bootstrap_resamples=30,
+            bootstrap_seed=2027,
+        )
+
+        self.assertEqual(first["bootstrap_seed"], 2026)
+        self.assertEqual(second["bootstrap_seed"], 2026)
+        seed_cols = [
+            "correlation_ci_lower",
+            "correlation_ci_upper",
+            "regression_ci_lower",
+            "regression_ci_upper",
+        ]
+        pd.testing.assert_frame_equal(first["export_table"][seed_cols], second["export_table"][seed_cols])
+        self.assertFalse(first["export_table"][seed_cols].equals(third["export_table"][seed_cols]))
+
     def test_run_analysis_does_not_bootstrap_heavy_methods_by_default(self):
         rng = np.random.default_rng(469)
         n = 72
@@ -512,6 +571,30 @@ class KDAFrontendIntegrationTests(unittest.TestCase):
         self.assertTrue(chart_df["ci_lower"].notna().any())
         self.assertTrue(chart_df["ci_upper"].notna().any())
         self.assertLessEqual(chart_df["score"].max(), 100)
+
+    def test_interactive_chart_data_keeps_signed_regression_points_inside_share_intervals(self):
+        rng = np.random.default_rng(900)
+        n = 90
+        x1 = rng.normal(size=n)
+        x2 = rng.normal(size=n)
+        x3 = rng.normal(size=n)
+        y = 1.4 * x1 - 1.1 * x2 + 0.15 * x3 + rng.normal(scale=0.35, size=n)
+        df = pd.DataFrame({"y": y, "positive": x1, "negative": x2, "weak": x3})
+
+        result = run_kda(
+            df,
+            y_var="y",
+            x_vars=["positive", "negative", "weak"],
+            methods=["regression"],
+            bootstrap_methods=["regression"],
+            bootstrap_params={"n_resamples": 30, "random_state": 123, "min_valid_resamples": 8},
+        )
+        chart_df = build_interactive_chart_data(result.importance_table, ["regression"])
+        banded = chart_df.dropna(subset=["ci_lower", "ci_upper"])
+
+        self.assertFalse(banded.empty)
+        self.assertTrue((banded["ci_lower"] <= banded["ci_upper"]).all())
+        self.assertTrue(((banded["ci_lower"] <= banded["score"]) & (banded["score"] <= banded["ci_upper"])).all())
 
     def test_run_kda_adds_sum100_share_columns_for_each_method(self):
         rng = np.random.default_rng(475)

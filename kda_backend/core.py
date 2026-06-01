@@ -96,8 +96,10 @@ def _assemble_tables(
     method_scores: dict[str, pd.Series],
     method_warnings: dict[str, list[str]],
     method_intervals: dict[str, tuple[pd.Series, pd.Series]] | None = None,
+    method_share_intervals: dict[str, tuple[pd.Series, pd.Series]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     method_intervals = method_intervals or {}
+    method_share_intervals = method_share_intervals or {}
     importance = pd.DataFrame({"driver": x_vars})
     for method in methods:
         scores = method_scores[method].reindex(x_vars)
@@ -106,6 +108,10 @@ def _assemble_tables(
             lower, upper = method_intervals[method]
             importance[f"{method}_ci_lower"] = lower.reindex(x_vars).to_numpy()
             importance[f"{method}_ci_upper"] = upper.reindex(x_vars).to_numpy()
+        if method in method_share_intervals:
+            lower, upper = method_share_intervals[method]
+            importance[f"{method}_share_ci_lower"] = lower.reindex(x_vars).to_numpy()
+            importance[f"{method}_share_ci_upper"] = upper.reindex(x_vars).to_numpy()
         average100_scores = normalize_scores(scores)
         share_scores = share100_scores(scores)
         importance[f"{method}_average100"] = average100_scores.to_numpy()
@@ -194,9 +200,13 @@ def _bootstrap_intervals(
     progress_callback: ProgressCallback | None = None,
     progress_start: float = 0.0,
     progress_end: float = 1.0,
-) -> tuple[dict[str, tuple[pd.Series, pd.Series]], list[str]]:
+) -> tuple[
+    dict[str, tuple[pd.Series, pd.Series]],
+    dict[str, tuple[pd.Series, pd.Series]],
+    list[str],
+]:
     if not bootstrap_methods:
-        return {}, []
+        return {}, {}, []
 
     params = {
         "n_resamples": 200,
@@ -212,6 +222,7 @@ def _bootstrap_intervals(
     rng = np.random.default_rng(int(params["random_state"]))
 
     intervals: dict[str, tuple[pd.Series, pd.Series]] = {}
+    share_intervals: dict[str, tuple[pd.Series, pd.Series]] = {}
     warnings: list[str] = []
     selected = set(methods)
     total_bootstrap_methods = len(bootstrap_methods)
@@ -240,6 +251,7 @@ def _bootstrap_intervals(
             continue
 
         scores_by_driver = {driver: [] for driver in x_vars}
+        share_scores_by_driver = {driver: [] for driver in x_vars}
         update_every = max(1, n_resamples // 20)
         for sample_num in range(1, n_resamples + 1):
             sample_idx = rng.integers(0, len(model_data), size=len(model_data))
@@ -274,9 +286,13 @@ def _bootstrap_intervals(
                 continue
 
             sample_scores = result.scores.reindex(x_vars)
+            sample_share_scores = share100_scores(sample_scores)
             for driver, value in sample_scores.items():
                 if np.isfinite(value):
                     scores_by_driver[driver].append(float(value))
+            for driver, value in sample_share_scores.items():
+                if np.isfinite(value):
+                    share_scores_by_driver[driver].append(float(value))
             if sample_num % update_every == 0 or sample_num == n_resamples:
                 _emit_progress(
                     progress_callback,
@@ -286,6 +302,8 @@ def _bootstrap_intervals(
 
         lower = pd.Series(np.nan, index=x_vars, dtype=float)
         upper = pd.Series(np.nan, index=x_vars, dtype=float)
+        share_lower = pd.Series(np.nan, index=x_vars, dtype=float)
+        share_upper = pd.Series(np.nan, index=x_vars, dtype=float)
         min_valid = int(params.get("min_valid_resamples", max(10, int(n_resamples * 0.2))))
         for driver, values in scores_by_driver.items():
             if len(values) < min_valid:
@@ -298,16 +316,30 @@ def _bootstrap_intervals(
                 hi = max(hi, float(score))
             lower.loc[driver] = lo
             upper.loc[driver] = hi
+        main_share_scores = share100_scores(method_scores[method].reindex(x_vars))
+        for driver, values in share_scores_by_driver.items():
+            if len(values) < min_valid:
+                continue
+            lo = float(np.quantile(values, alpha))
+            hi = float(np.quantile(values, 1 - alpha))
+            score = main_share_scores.loc[driver]
+            if np.isfinite(score):
+                lo = min(lo, float(score))
+                hi = max(hi, float(score))
+            share_lower.loc[driver] = lo
+            share_upper.loc[driver] = hi
 
         if lower.notna().any() and upper.notna().any():
             intervals[method] = (lower, upper)
+            if share_lower.notna().any() and share_upper.notna().any():
+                share_intervals[method] = (share_lower, share_upper)
         else:
             warnings.append(
                 f"{method} bootstrap skipped: insufficient valid bootstrap samples after {n_resamples} resamples."
             )
         _emit_progress(progress_callback, method_end, f"Finished bootstrap bands for {label}.")
 
-    return intervals, warnings
+    return intervals, share_intervals, warnings
 
 
 def run_kda(
@@ -477,7 +509,7 @@ def run_kda(
         warnings.extend([f"{method}: {warning}" for warning in result.warnings])
         _emit_progress(progress_callback, step_end, f"Finished {label}.")
 
-    method_intervals, bootstrap_warnings = _bootstrap_intervals(
+    method_intervals, method_share_intervals, bootstrap_warnings = _bootstrap_intervals(
         model_data=model_data,
         y_var=y_var,
         x_vars=x_vars,
@@ -495,7 +527,14 @@ def run_kda(
     warnings.extend(bootstrap_warnings)
 
     _emit_progress(progress_callback, 0.97, "Assembling rankings, diagnostics, and charts...")
-    importance, ranking = _assemble_tables(x_vars, methods, method_scores, method_warnings, method_intervals)
+    importance, ranking = _assemble_tables(
+        x_vars,
+        methods,
+        method_scores,
+        method_warnings,
+        method_intervals,
+        method_share_intervals,
+    )
     diagnostics = _diagnostics(
         rows_input=len(data),
         rows_used=len(model_data),
