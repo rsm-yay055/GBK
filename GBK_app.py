@@ -1801,11 +1801,11 @@ def run_analysis(
     }
     if controls:
         method_params["shapley_lmg"] = {"always_controls": True}
-    bootstrap_methods = (
-        [method for method in methods if method in DEFAULT_BOOTSTRAP_METHODS]
-        if include_bootstrap
-        else None
-    )
+    # Bootstrap can run on ANY selected method. Heavy methods (RF / XGBoost /
+    # SHAP) used to be filtered out here; they are now included so every
+    # selected method gets uncertainty bands. The backend already handles each
+    # method generically and skips any that are not applicable.
+    bootstrap_methods = list(methods) if include_bootstrap else None
     bootstrap_params = (
         {
             "n_resamples": int(bootstrap_resamples),
@@ -2217,9 +2217,9 @@ def render_dashboard():
             '<div class="gbk-panel"><div class="gbk-panel-title">Optional · Bootstrap confidence intervals</div>'
             '<div class="gbk-note">Bootstrap adds uncertainty bands around the ranking. Leave it off for quick exploration. '
             "Turn it on when scores are close together or when you want more confidence before sharing a final story. "
-            f"By default, the app resamples the data {DEFAULT_BOOTSTRAP_RESAMPLES} times and adds bands for the lighter methods: "
-            "<b>Correlation</b>, <b>Regression</b>, <b>Shapley / LMG</b>, <b>Johnson Relative Weights</b>, and <b>COA</b>. "
-            "<b>Random Forest</b>, <b>XGBoost</b>, and <b>SHAP</b> still appear as point estimates to keep run times practical.</div></div>",
+            f"By default, the app resamples the data {DEFAULT_BOOTSTRAP_RESAMPLES} times and adds bands to <b>every method you select</b>. "
+            "Note that <b>Random Forest</b>, <b>XGBoost</b>, <b>SHAP</b>, and <b>Shapley / LMG</b> are computationally intensive, "
+            "so bootstrapping them can take a while.</div></div>",
             unsafe_allow_html=True,
         )
         include_bootstrap = st.checkbox(
@@ -2227,12 +2227,28 @@ def render_dashboard():
         )
         bootstrap_resamples = DEFAULT_BOOTSTRAP_RESAMPLES
         bootstrap_seed = DEFAULT_BOOTSTRAP_SEED
-        selected_bootstrap_methods = [
-            method for method in selected_methods if method in DEFAULT_BOOTSTRAP_METHODS
-        ]
+        # Every selected method now receives bootstrap bands.
+        selected_bootstrap_methods = list(selected_methods)
+        # Heavy / slow methods that warrant a "this may take a while" warning
+        # when the user turns bootstrap on (RF, XGBoost, SHAP, Shapley / LMG).
         selected_heavy_methods = [
-            method for method in selected_methods if method in HEAVY_BOOTSTRAP_METHODS
+            method for method in selected_methods if method in SLOW_RUN_METHODS
         ]
+        if include_bootstrap and selected_heavy_methods:
+            heavy_label = ", ".join(
+                METHOD_LABELS.get(method, method)
+                for method in selected_heavy_methods
+            )
+            st.markdown(
+                '<div class="gbk-warning-card">'
+                "<b>Heads up — this bootstrap may take a while.</b><br>"
+                f"You selected bootstrap for computationally intensive method(s): <b>{heavy_label}</b>. "
+                "Each method is re-fit on every resample, so run time can grow to several minutes. "
+                "If you also compare groups, the time is multiplied by the number of groups. "
+                "Lowering the number of bootstrap samples speeds this up."
+                "</div>",
+                unsafe_allow_html=True,
+            )
         if include_bootstrap:
             with st.expander("Bootstrap controls"):
                 bootstrap_resamples = st.number_input(
@@ -2260,17 +2276,9 @@ def render_dashboard():
                 )
                 or "None"
             )
-            point_only_label = (
-                ", ".join(
-                    METHOD_LABELS.get(method, method)
-                    for method in selected_heavy_methods
-                )
-                or "None"
-            )
             st.markdown(
                 f'<div class="gbk-note" style="margin-top:0.5rem;">'
                 f"<b>Uncertainty bands will be shown for:</b> {ci_method_label}<br>"
-                f"<b>Shown without bands:</b> {point_only_label}<br>"
                 f"<b>Seed:</b> {int(bootstrap_seed)}"
                 f"</div>",
                 unsafe_allow_html=True,
@@ -2347,7 +2355,7 @@ def render_dashboard():
                 )
             if include_bootstrap:
                 hint_parts.append(
-                    f"Bootstrap bands will run {int(bootstrap_resamples):,} resamples for eligible methods with seed {int(bootstrap_seed)}."
+                    f"Bootstrap bands will run {int(bootstrap_resamples):,} resamples for each selected method with seed {int(bootstrap_seed)}."
                 )
             if hint_parts:
                 progress_hint.markdown(
