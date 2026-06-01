@@ -273,6 +273,16 @@ class KDAFrontendIntegrationTests(unittest.TestCase):
         self.assertEqual(list(loaded.columns), ["right"])
         self.assertEqual(len(loaded), 2)
 
+    def test_upload_reader_accepts_csv_files(self):
+        source = pd.DataFrame({"outcome": [5, 4], "driver": [3, 2]})
+        csv_file = BytesIO(source.to_csv(index=False).encode("utf-8"))
+        csv_file.name = "source.csv"
+
+        loaded = read_uploaded_dataset(csv_file)
+
+        self.assertEqual(list(loaded.columns), ["outcome", "driver"])
+        self.assertEqual(len(loaded), 2)
+
     def test_generic_dataset_without_zagg_names_can_run(self):
         rng = np.random.default_rng(467)
         n = 72

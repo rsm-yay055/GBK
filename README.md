@@ -9,10 +9,10 @@ Live app: https://gbkkeydrivers.streamlit.app/
 
 ## Overview
 
-GBK Marketing Insights Suite turns a clean Excel workbook into a driver ranking
-workflow. Users upload a model-ready survey dataset, select an outcome variable,
-choose candidate drivers, optionally compare subgroups, and export detailed
-method-level scores for QA, appendices, and client delivery.
+GBK Marketing Insights Suite turns a clean Excel workbook or CSV file into a
+driver ranking workflow. Users upload a model-ready survey dataset, select an
+outcome variable, choose candidate drivers, optionally compare subgroups, and
+export detailed method-level scores for QA, appendices, and client delivery.
 
 The application combines a consultant-friendly Streamlit interface with a
 backend key driver analysis engine that supports traditional statistical
@@ -20,7 +20,8 @@ methods and machine-learning based importance checks.
 
 ## Core Capabilities
 
-- Excel upload with worksheet selection for `.xlsx` workbooks.
+- Dataset upload for `.xlsx` workbooks and `.csv` files, with worksheet
+  selection for Excel workbooks.
 - Guided analysis setup for outcome, driver, control, and subgroup variables.
 - Automatic data preparation for numeric modeling, missing values, constant
   columns, and obvious ID/date/meta fields.
@@ -50,9 +51,9 @@ The backend supports nine driver analysis methods:
 
 ## Recommended Workflow
 
-1. Upload a clean Excel workbook with one row per respondent and one column per
-   survey question, metric, or segment.
-2. Select the worksheet to analyze.
+1. Upload a clean Excel workbook or CSV file with one row per respondent and one
+   column per survey question, metric, or segment.
+2. Select the worksheet to analyze when using an Excel workbook.
 3. Choose the outcome variable.
 4. Select candidate driver variables and optional controls.
 5. Choose whether to run one overall model or repeat the model by subgroup.
@@ -73,10 +74,10 @@ The app produces:
 
 ## Data Expectations
 
-Use a clean, model-ready `.xlsx` file. The app expects one record per respondent
-and does not reshape raw survey exports. Outcome and driver columns should be
-numeric or convertible to numeric modeling inputs. Segment variables can be used
-for subgroup analysis when each level has enough usable rows.
+Use a clean, model-ready `.xlsx` or `.csv` file. The app expects one record per
+respondent and does not reshape raw survey exports. Outcome and driver columns
+should be numeric or convertible to numeric modeling inputs. Segment variables
+can be used for subgroup analysis when each level has enough usable rows.
 
 Uploaded data is processed by the running Streamlit app session. For sensitive
 or restricted datasets, use only an approved deployment environment.

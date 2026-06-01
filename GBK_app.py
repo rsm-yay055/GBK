@@ -1,12 +1,15 @@
 import html as _html
 import inspect as _inspect
+import json as _json
 import re as _re
+from io import BytesIO as _BytesIO
 
 import altair as alt
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+from PIL import Image
 
 from kda_backend import ALL_METHODS, run_kda
 
@@ -181,7 +184,6 @@ div[data-testid="stDownloadButton"] > button {
   letter-spacing: 1.5px !important;
   box-shadow: 0 10px 22px rgba(247,99,98,0.24) !important;
 }
-
 div[data-baseweb="select"] > div,
 div[data-testid="stSelectbox"] > div > div {
   background: #334651 !important;
@@ -741,8 +743,12 @@ def _uploaded_name(uploaded_file):
     return str(getattr(uploaded_file, "name", "") or "")
 
 
+def _is_csv_upload(uploaded_file):
+    return _uploaded_name(uploaded_file).lower().endswith(".csv")
+
+
 def get_uploaded_sheet_names(uploaded_file):
-    if uploaded_file is None or _uploaded_name(uploaded_file).lower().endswith(".csv"):
+    if uploaded_file is None or _is_csv_upload(uploaded_file):
         return []
     if hasattr(uploaded_file, "seek"):
         uploaded_file.seek(0)
@@ -760,7 +766,7 @@ def default_sheet_name(sheet_names, preferred=None):
 def read_uploaded_dataset(uploaded_file, sheet_name=None):
     if hasattr(uploaded_file, "seek"):
         uploaded_file.seek(0)
-    if _uploaded_name(uploaded_file).lower().endswith(".csv"):
+    if _is_csv_upload(uploaded_file):
         return pd.read_csv(uploaded_file)
     excel = pd.ExcelFile(uploaded_file)
     selected_sheet = sheet_name or default_sheet_name(excel.sheet_names)
@@ -1284,8 +1290,97 @@ def render_chart_disclaimer(kda_result, methods):
         )
 
 
+def _chart_file_stem(label):
+    stem = _re.sub(r"[^a-zA-Z0-9_]+", "_", str(label).lower()).strip("_")
+    return stem or "driver_ranking_chart"
+
+
+def _chart_export_spec_json(chart):
+    spec = chart.properties(width=1200).to_dict()
+    config = spec.setdefault("config", {})
+    for section in ("axis", "legend", "title"):
+        section_config = config.get(section)
+        if not isinstance(section_config, dict):
+            continue
+        for font_key in ("font", "labelFont", "titleFont"):
+            section_config.pop(font_key, None)
+    return _json.dumps(spec)
+
+
+@st.cache_data(show_spinner=False)
+def _chart_png_bytes(spec_json):
+    try:
+        import vl_convert as vlc
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Chart image export requires the vl-convert-python package."
+        ) from exc
+
+    png_bytes = vlc.vegalite_to_png(
+        _json.loads(spec_json),
+        scale=2,
+        show_warnings=False,
+    )
+    return png_bytes
+
+
+@st.cache_data(show_spinner=False)
+def _chart_jpeg_bytes(png_bytes):
+    image = Image.open(_BytesIO(png_bytes)).convert("RGB")
+    out = _BytesIO()
+    image.save(out, format="JPEG", quality=95, optimize=True)
+    return out.getvalue()
+
+
+def _chart_image_bytes(spec_json, image_format):
+    png_bytes = _chart_png_bytes(spec_json)
+    if image_format == "png":
+        return png_bytes
+    return _chart_jpeg_bytes(png_bytes)
+
+
+def chart_download_payloads(chart):
+    try:
+        spec_json = _chart_export_spec_json(chart)
+        png_bytes = _chart_image_bytes(spec_json, "png")
+        jpeg_bytes = _chart_image_bytes(spec_json, "jpeg")
+    except Exception as exc:
+        return None, None, f"Chart image export is unavailable: {exc}"
+
+    return png_bytes, jpeg_bytes, None
+
+
+def render_disabled_chart_download(label, key_prefix):
+    st.button(
+        label,
+        disabled=True,
+        width="stretch",
+        key=f"{_chart_file_stem(key_prefix)}_{_chart_file_stem(label)}_disabled",
+    )
+
+
+def render_chart_format_download(label, data, file_name, mime, key_prefix):
+    if data is None:
+        render_disabled_chart_download(label, key_prefix)
+        return
+
+    st.download_button(
+        label,
+        data,
+        file_name=file_name,
+        mime=mime,
+        key=f"{_chart_file_stem(key_prefix)}_{_chart_file_stem(label)}",
+        on_click="ignore",
+        width="stretch",
+    )
+
+
+
 def render_interval_chart(
-    kda_result, methods, title="Driver importance", chart_x_domain=None
+    kda_result,
+    methods,
+    title="Driver importance",
+    chart_x_domain=None,
 ):
     st.markdown(f'<div class="gbk-panel-title">{title}</div>', unsafe_allow_html=True)
     if not methods:
@@ -1300,6 +1395,7 @@ def render_interval_chart(
     if chart is not None:
         st.altair_chart(chart, width="stretch", theme=None)
     render_chart_disclaimer(kda_result, methods)
+    return chart
 
 
 def render_controlled_interval_chart(
@@ -1311,6 +1407,7 @@ def render_controlled_interval_chart(
 ):
     st.markdown(f'<div class="gbk-panel-title">{title}</div>', unsafe_allow_html=True)
     chart_col, controls_col = st.columns([0.84, 0.16], gap="large")
+    chart = None
     with controls_col:
         active_methods = render_chart_method_checkboxes(methods, key_prefix)
     with chart_col:
@@ -1326,7 +1423,7 @@ def render_controlled_interval_chart(
             if chart is not None:
                 st.altair_chart(chart, width="stretch", theme=None)
             render_chart_disclaimer(kda_result, active_methods)
-    return active_methods
+    return active_methods, chart
 
 
 def render_results_guide(target, methods, subgroup_label=None):
@@ -1497,15 +1594,60 @@ def _download_table(table, dependent_variable=None):
     return out
 
 
-def render_table_download(label, table, file_name, dependent_variable=None):
+def render_table_download(label, table, file_name, dependent_variable=None, key=None):
     download_table = _download_table(table, dependent_variable)
     st.download_button(
         label,
         download_table.to_csv(index=False).encode("utf-8"),
         file_name=file_name,
         mime="text/csv",
+        key=key,
         width="stretch",
     )
+
+
+def render_data_and_chart_downloads(
+    data_label,
+    table,
+    file_name,
+    chart,
+    chart_key_prefix,
+    chart_file_stem,
+    dependent_variable=None,
+):
+    png_bytes = jpeg_bytes = chart_error = None
+    if chart is not None:
+        png_bytes, jpeg_bytes, chart_error = chart_download_payloads(chart)
+
+    safe_key = _chart_file_stem(chart_key_prefix)
+    safe_stem = _chart_file_stem(chart_file_stem)
+    data_col, png_col, jpeg_col = st.columns(3, gap="medium")
+    with data_col:
+        render_table_download(
+            data_label,
+            table,
+            file_name,
+            dependent_variable,
+            key=f"{safe_key}_download_data_csv",
+        )
+    with png_col:
+        render_chart_format_download(
+            "Download Chart PNG",
+            png_bytes,
+            f"{safe_stem}.png",
+            "image/png",
+            f"{safe_key}_png",
+        )
+    with jpeg_col:
+        render_chart_format_download(
+            "Download Chart JPEG",
+            jpeg_bytes,
+            f"{safe_stem}.jpg",
+            "image/jpeg",
+            f"{safe_key}_jpeg",
+        )
+    if chart_error:
+        st.caption(chart_error)
 
 
 def render_uploaded_data_review(df_raw, meta):
@@ -1778,24 +1920,26 @@ def render_dashboard():
         '<div class="gbk-label">Upload your dataset</div>', unsafe_allow_html=True
     )
     st.markdown(
-        '<div class="gbk-mini-note" style="margin-bottom:0.6rem;">Use a clean Excel file with one row per respondent and one column per survey question, metric, or segment.</div>',
+        '<div class="gbk-mini-note" style="margin-bottom:0.6rem;">Use a clean Excel or CSV file with one row per respondent and one column per survey question, metric, or segment.</div>',
         unsafe_allow_html=True,
     )
     uploaded_file = st.file_uploader(
-        "Upload Excel workbook (.xlsx)",
-        type=["xlsx"],
+        "Upload dataset (.xlsx or .csv)",
+        type=["xlsx", "csv"],
         key="dashboard_upload",
         label_visibility="collapsed",
     )
     st.caption(
-        "Supported file type: .xlsx only. Upload a clean/model-ready workbook; the tool does not reshape raw data."
+        "Supported file types: .xlsx and .csv. Upload clean/model-ready data; the tool does not reshape raw data."
     )
 
     if uploaded_file:
         base_signature = (uploaded_file.name, getattr(uploaded_file, "size", None))
+        is_csv_upload = _is_csv_upload(uploaded_file)
         sheet_names = st.session_state.uploaded_sheet_names
         if (
-            st.session_state.uploaded_file_signature
+            not is_csv_upload
+            and st.session_state.uploaded_file_signature
             and st.session_state.uploaded_file_signature[:2] == base_signature
         ):
             sheet_names = sheet_names or [st.session_state.uploaded_sheet_name]
@@ -1824,8 +1968,9 @@ def render_dashboard():
                 )
 
         file_signature = (*base_signature, selected_sheet)
+        can_load_file = is_csv_upload or selected_sheet is not None
         if (
-            selected_sheet
+            can_load_file
             and st.session_state.uploaded_file_signature == file_signature
         ):
             df_raw = st.session_state.uploaded_df_raw
@@ -1834,7 +1979,7 @@ def render_dashboard():
         else:
             df_raw = df_num = meta = None
         try:
-            if selected_sheet and (df_raw is None or df_num is None or meta is None):
+            if can_load_file and (df_raw is None or df_num is None or meta is None):
                 source_df = read_uploaded_dataset(uploaded_file, selected_sheet)
                 df_raw, df_num, meta = prepare_model_data(source_df)
                 st.session_state.uploaded_df_raw = df_raw
@@ -1853,7 +1998,7 @@ def render_dashboard():
 
     if df_raw is None or df_num is None:
         st.markdown(
-            '<div class="gbk-note" style="color:rgba(255,255,255,0.35);">Upload a clean .xlsx workbook to begin. The app will suggest likely outcome, predictor, and subgroup columns.</div>',
+            '<div class="gbk-note" style="color:rgba(255,255,255,0.35);">Upload a clean .xlsx workbook or .csv file to begin. The app will suggest likely outcome, predictor, and subgroup columns.</div>',
             unsafe_allow_html=True,
         )
         return
@@ -2224,16 +2369,19 @@ def render_dashboard():
                 result["methods"], "single_chart_methods"
             )
             render_results_guide(result["target"], active_methods)
-            render_controlled_interval_chart(
+            active_methods, main_chart = render_controlled_interval_chart(
                 result["kda_result"],
                 result["methods"],
                 "single_chart_methods",
                 title="Driver ranking chart",
             )
-            render_table_download(
-                "Download Main Results Table CSV",
+            render_data_and_chart_downloads(
+                "Download Data CSV",
                 result["export_table"],
                 "driver_main_results.csv",
+                main_chart,
+                "single_chart",
+                "driver_ranking_chart",
                 dependent_variable=result["target"],
             )
             render_insights(result["target"], result["driver_scores"])
@@ -2361,12 +2509,14 @@ def render_dashboard():
                         unsafe_allow_html=True,
                     )
                 else:
-                    group_file = _re.sub(r"[^a-zA-Z0-9_]+", "_", str(item["group"])).strip("_")
+                    group_file = _re.sub(
+                        r"[^a-zA-Z0-9_]+", "_", str(item["group"])
+                    ).strip("_")
                     st.markdown(
                         f'<div style="font-size:13px;font-weight:700;color:#E8503A;margin:1rem 0 0.25rem;text-transform:uppercase;letter-spacing:1.5px;">{_auto_label(result["sg_var"])}: {item["group"]} · n={item["n"]:,}</div>',
                         unsafe_allow_html=True,
                     )
-                    render_interval_chart(
+                    group_chart = render_interval_chart(
                         item["kda_result"],
                         active_methods,
                         title=f"Driver ranking — {item['group']}",
@@ -2376,10 +2526,13 @@ def render_dashboard():
                         unsafe_allow_html=True,
                     )
                     st.dataframe(_display_table(item["export_table"]), width="stretch")
-                    render_table_download(
-                        f'Download {item["group"]} Score Table CSV',
+                    render_data_and_chart_downloads(
+                        "Download Data CSV",
                         item["export_table"],
                         f"subgroup_{group_file or 'group'}_score_table.csv",
+                        group_chart,
+                        f"subgroup_chart_{group_file or 'group'}",
+                        f"subgroup_{group_file or 'group'}_driver_ranking_chart",
                         dependent_variable=result["target"],
                     )
             with st.expander("Downloadable subgroup scores"):
