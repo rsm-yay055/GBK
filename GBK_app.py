@@ -501,6 +501,7 @@ DEFAULT_METHODS = ("correlation", "regression")
 DEFAULT_BOOTSTRAP_METHODS = ("correlation", "regression", "shapley_lmg", "johnson", "coa")
 HEAVY_BOOTSTRAP_METHODS = ("random_forest", "xgboost", "shap")
 DEFAULT_BOOTSTRAP_RESAMPLES = 200
+DEFAULT_BOOTSTRAP_SEED = 454
 RESULT_SCHEMA_VERSION = 2
 SLOW_RUN_METHODS = {"shapley_lmg", *HEAVY_BOOTSTRAP_METHODS}
 SHARE_SCALE_METHODS = {"shapley_lmg", "johnson", "coa", "random_forest", "xgboost", "shap"}
@@ -869,13 +870,20 @@ def build_driver_interval_chart(importance_table, methods):
         color = METHOD_COLORS.get(method, BAR_COLORS[idx % len(BAR_COLORS)])
         lower_col = f"{method}_ci_lower"
         upper_col = f"{method}_ci_upper"
-        if lower_col in plot_df.columns and upper_col in plot_df.columns:
-            lower = _share_like_main_scores(
-                plot_df[lower_col], plot_df[method]
-            ).to_numpy(dtype=float)
-            upper = _share_like_main_scores(
-                plot_df[upper_col], plot_df[method]
-            ).to_numpy(dtype=float)
+        share_lower_col = f"{method}_share_ci_lower"
+        share_upper_col = f"{method}_share_ci_upper"
+        if share_lower_col in plot_df.columns and share_upper_col in plot_df.columns:
+            lower = plot_df[share_lower_col].to_numpy(dtype=float)
+            upper = plot_df[share_upper_col].to_numpy(dtype=float)
+            has_interval = True
+        elif lower_col in plot_df.columns and upper_col in plot_df.columns:
+            lower = _share_like_main_scores(plot_df[lower_col], plot_df[method]).to_numpy(dtype=float)
+            upper = _share_like_main_scores(plot_df[upper_col], plot_df[method]).to_numpy(dtype=float)
+            lower, upper = np.minimum(lower, upper), np.maximum(lower, upper)
+            has_interval = True
+        else:
+            has_interval = False
+        if has_interval:
             left_err = np.where(np.isfinite(lower), scores - lower, 0)
             right_err = np.where(np.isfinite(upper), upper - scores, 0)
             ax.errorbar(
@@ -981,6 +989,13 @@ def build_interactive_chart_data(importance_table, methods):
         lower = pd.Series(np.nan, index=table.index, dtype=float)
         upper = pd.Series(np.nan, index=table.index, dtype=float)
         if (
+            f"{method}_share_ci_lower" in table.columns
+            and f"{method}_share_ci_upper" in table.columns
+            and score_scale == "share"
+        ):
+            lower = table[f"{method}_share_ci_lower"]
+            upper = table[f"{method}_share_ci_upper"]
+        elif (
             f"{method}_ci_lower" in table.columns
             and f"{method}_ci_upper" in table.columns
         ):
@@ -995,6 +1010,7 @@ def build_interactive_chart_data(importance_table, methods):
                 upper = _normalize_like_main_scores(
                     table[f"{method}_ci_upper"], main_scores
                 )
+        lower, upper = lower.combine(upper, min), lower.combine(upper, max)
         for idx, row in table.iterrows():
             ci_lower = float(lower.iloc[idx]) if pd.notna(lower.iloc[idx]) else np.nan
             ci_upper = float(upper.iloc[idx]) if pd.notna(upper.iloc[idx]) else np.nan
@@ -1746,6 +1762,7 @@ def run_analysis(
     methods,
     include_bootstrap=False,
     bootstrap_resamples=DEFAULT_BOOTSTRAP_RESAMPLES,
+    bootstrap_seed=DEFAULT_BOOTSTRAP_SEED,
     control_vars=None,
     progress_callback=None,
 ):
@@ -1792,7 +1809,7 @@ def run_analysis(
     bootstrap_params = (
         {
             "n_resamples": int(bootstrap_resamples),
-            "random_state": 454,
+            "random_state": int(bootstrap_seed),
             "min_valid_resamples": 8,
         }
         if include_bootstrap
@@ -1840,6 +1857,7 @@ def run_analysis(
             "include_bootstrap": include_bootstrap,
             "bootstrap_methods": bootstrap_methods or [],
             "bootstrap_resamples": int(bootstrap_resamples) if include_bootstrap else 0,
+            "bootstrap_seed": int(bootstrap_seed) if include_bootstrap else None,
             "y_type_override": y_type_override,
         }
 
@@ -1898,6 +1916,7 @@ def run_analysis(
         "include_bootstrap": include_bootstrap,
         "bootstrap_methods": bootstrap_methods or [],
         "bootstrap_resamples": int(bootstrap_resamples) if include_bootstrap else 0,
+        "bootstrap_seed": int(bootstrap_seed) if include_bootstrap else None,
         "y_type_override": y_type_override,
     }
 
@@ -2207,6 +2226,7 @@ def render_dashboard():
             "Show uncertainty bands", value=False, key="dash_bootstrap"
         )
         bootstrap_resamples = DEFAULT_BOOTSTRAP_RESAMPLES
+        bootstrap_seed = DEFAULT_BOOTSTRAP_SEED
         selected_bootstrap_methods = [
             method for method in selected_methods if method in DEFAULT_BOOTSTRAP_METHODS
         ]
@@ -2223,6 +2243,15 @@ def render_dashboard():
                     step=10,
                     help="More samples make bands smoother but slower. Group comparisons multiply the time by the number of included groups.",
                     key="bootstrap_resamples",
+                )
+                bootstrap_seed = st.number_input(
+                    "Random seed",
+                    min_value=0,
+                    max_value=2_147_483_647,
+                    value=DEFAULT_BOOTSTRAP_SEED,
+                    step=1,
+                    help="Use the same seed later to reproduce the same bootstrap bands.",
+                    key="bootstrap_seed",
                 )
             ci_method_label = (
                 ", ".join(
@@ -2241,7 +2270,8 @@ def render_dashboard():
             st.markdown(
                 f'<div class="gbk-note" style="margin-top:0.5rem;">'
                 f"<b>Uncertainty bands will be shown for:</b> {ci_method_label}<br>"
-                f"<b>Shown without bands:</b> {point_only_label}"
+                f"<b>Shown without bands:</b> {point_only_label}<br>"
+                f"<b>Seed:</b> {int(bootstrap_seed)}"
                 f"</div>",
                 unsafe_allow_html=True,
             )
@@ -2317,7 +2347,7 @@ def render_dashboard():
                 )
             if include_bootstrap:
                 hint_parts.append(
-                    f"Bootstrap bands will run {int(bootstrap_resamples):,} resamples for eligible methods."
+                    f"Bootstrap bands will run {int(bootstrap_resamples):,} resamples for eligible methods with seed {int(bootstrap_seed)}."
                 )
             if hint_parts:
                 progress_hint.markdown(
@@ -2347,6 +2377,7 @@ def render_dashboard():
                 selected_methods,
                 include_bootstrap=include_bootstrap,
                 bootstrap_resamples=bootstrap_resamples,
+                bootstrap_seed=bootstrap_seed,
                 control_vars=control_vars,
                 progress_callback=update_progress,
             )
