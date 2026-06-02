@@ -2,6 +2,7 @@ import html as _html
 import inspect as _inspect
 import json as _json
 import re as _re
+import time as _time
 from io import BytesIO as _BytesIO
 
 import altair as alt
@@ -73,8 +74,10 @@ White      #FFFFFF
 .gbk-method-section-title { color: #C7D8E4; font-size: 12px; font-weight: 800; letter-spacing: 1.8px; text-transform: uppercase; margin: 18px 0 8px; }
 .gbk-method-title { font-size: 13px; color: #FFFFFF; font-weight: 700; margin-bottom: 4px; }
 .gbk-method-desc { font-size: 12px; color: rgba(255,255,255,0.80); line-height: 1.55; }
-.gbk-progress-status { color: #C7D8E4; font-size: 14px; font-weight: 700; margin: 0.9rem 0 0.35rem; }
-.gbk-progress-status span { color: #FFFFFF; display: inline-block; min-width: 42px; margin-right: 8px; }
+.gbk-progress-status { color: #C7D8E4; font-size: 14px; font-weight: 700; margin: 0.9rem 0 0.35rem; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gbk-progress-status .gbk-progress-pct { color: #FFFFFF; display: inline-block; min-width: 42px; }
+.gbk-progress-status .gbk-progress-message { flex: 1; min-width: 260px; }
+.gbk-progress-status .gbk-progress-timer { color: rgba(255,255,255,0.92); background: rgba(199,216,228,0.12); border: 1px solid rgba(199,216,228,0.22); border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 800; white-space: nowrap; }
 .gbk-progress-hint { color: rgba(255,255,255,0.68); font-size: 12px; line-height: 1.6; margin-top: 0.35rem; }
 .gbk-chart-method-title { color: #FFFFFF; font-size: 13px; font-weight: 800; margin: 0 0 0.45rem; }
 .gbk-chart-method-note { color: rgba(255,255,255,0.60); font-size: 11px; line-height: 1.45; margin-bottom: 0.6rem; }
@@ -604,6 +607,17 @@ def _auto_label(col):
     s = _re.sub(r"([a-zA-Z])(\d)", r"\1 \2", s)
     s = _re.sub(r"([a-z])([A-Z])", r"\1 \2", s)
     return _re.sub(r"\s+", " ", s).strip().title()
+
+
+def _format_elapsed(seconds):
+    seconds = max(0, int(round(float(seconds))))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m {secs:02d}s"
+    if minutes:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
 
 
 def display_name(col):
@@ -2363,15 +2377,23 @@ def render_dashboard():
                     unsafe_allow_html=True,
                 )
 
+            run_started_at = _time.perf_counter()
             last_progress = {"value": 0.0}
 
             def update_progress(progress, message):
                 progress = min(1.0, max(last_progress["value"], float(progress)))
                 last_progress["value"] = progress
                 pct = int(round(progress * 100))
+                elapsed = _format_elapsed(_time.perf_counter() - run_started_at)
                 progress_bar.progress(pct)
                 progress_status.markdown(
-                    f'<div class="gbk-progress-status"><span>{pct}%</span>{_html.escape(message)}</div>',
+                    (
+                        '<div class="gbk-progress-status">'
+                        f'<span class="gbk-progress-pct">{pct}%</span>'
+                        f'<span class="gbk-progress-message">{_html.escape(message)}</span>'
+                        f'<span class="gbk-progress-timer">Elapsed time: {elapsed}</span>'
+                        "</div>"
+                    ),
                     unsafe_allow_html=True,
                 )
 
@@ -2393,6 +2415,7 @@ def render_dashboard():
                 update_progress(1.0, "Analysis stopped. Review the message below.")
             else:
                 update_progress(1.0, "Analysis complete. Results are ready.")
+            result["elapsed_seconds"] = _time.perf_counter() - run_started_at
             st.session_state.analysis_result = result
 
     result = st.session_state.analysis_result
