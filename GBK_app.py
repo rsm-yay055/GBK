@@ -512,12 +512,12 @@ SHARE_SCALE_METHODS = {"shapley_lmg", "johnson", "coa", "random_forest", "xgboos
 METHOD_COLORS = {
     "correlation": "#F76362",
     "regression": "#C7D8E4",
-    "drop_one": "#3B4954",
+    "drop_one": "#00E5FF",
     "shapley_lmg": "#D76BA6",
     "johnson": "#2FA872",
     "coa": "#E58C3A",
     "random_forest": "#8B6BD6",
-    "xgboost": "#F0B35A",
+    "xgboost": "#4D8DFF",
     "shap": "#2CA6A4",
 }
 
