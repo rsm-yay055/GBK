@@ -2,6 +2,7 @@ import html as _html
 import inspect as _inspect
 import json as _json
 import re as _re
+import threading as _threading
 import time as _time
 from io import BytesIO as _BytesIO
 
@@ -2378,11 +2379,25 @@ def render_dashboard():
                 )
 
             run_started_at = _time.perf_counter()
-            last_progress = {"value": 0.0}
+            progress_lock = _threading.Lock()
+            progress_state = {
+                "value": 0.0,
+                "message": f"Starting driver analysis with {method_label}...",
+            }
+            result_holder = {"result": None}
 
             def update_progress(progress, message):
-                progress = min(1.0, max(last_progress["value"], float(progress)))
-                last_progress["value"] = progress
+                with progress_lock:
+                    progress = min(
+                        1.0, max(progress_state["value"], float(progress))
+                    )
+                    progress_state["value"] = progress
+                    progress_state["message"] = str(message)
+
+            def render_progress_status():
+                with progress_lock:
+                    progress = progress_state["value"]
+                    message = progress_state["message"]
                 pct = int(round(progress * 100))
                 elapsed = _format_elapsed(_time.perf_counter() - run_started_at)
                 progress_bar.progress(pct)
@@ -2397,25 +2412,42 @@ def render_dashboard():
                     unsafe_allow_html=True,
                 )
 
+            def run_analysis_worker():
+                try:
+                    result_holder["result"] = run_analysis(
+                        df_num,
+                        df_raw,
+                        y_selected,
+                        x_vars or None,
+                        sg_var,
+                        selected_methods,
+                        include_bootstrap=include_bootstrap,
+                        bootstrap_resamples=bootstrap_resamples,
+                        bootstrap_seed=bootstrap_seed,
+                        control_vars=control_vars,
+                        progress_callback=update_progress,
+                    )
+                except Exception as exc:
+                    result_holder["result"] = {"error": str(exc)}
+
             update_progress(0.01, f"Starting driver analysis with {method_label}...")
-            result = run_analysis(
-                df_num,
-                df_raw,
-                y_selected,
-                x_vars or None,
-                sg_var,
-                selected_methods,
-                include_bootstrap=include_bootstrap,
-                bootstrap_resamples=bootstrap_resamples,
-                bootstrap_seed=bootstrap_seed,
-                control_vars=control_vars,
-                progress_callback=update_progress,
-            )
+            render_progress_status()
+            analysis_thread = _threading.Thread(target=run_analysis_worker, daemon=True)
+            analysis_thread.start()
+            while analysis_thread.is_alive():
+                render_progress_status()
+                _time.sleep(0.5)
+            analysis_thread.join()
+
+            result = result_holder["result"] or {
+                "error": "Analysis stopped before returning results."
+            }
             if "error" in result:
                 update_progress(1.0, "Analysis stopped. Review the message below.")
             else:
                 update_progress(1.0, "Analysis complete. Results are ready.")
             result["elapsed_seconds"] = _time.perf_counter() - run_started_at
+            render_progress_status()
             st.session_state.analysis_result = result
 
     result = st.session_state.analysis_result
