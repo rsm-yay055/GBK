@@ -469,8 +469,28 @@ div[data-testid="stCheckbox"] input:checked {
 """
 
 
+DEMO_MODE = True
+
+DEMO_PAGE_STYLE = """
+<style>
+.gbk-logo,
+img[alt*="GBK" i],
+img[alt*="logo" i] {
+  display: none !important;
+}
+</style>
+"""
+
+
+def _ui_copy(production_text, demo_text):
+    return demo_text if DEMO_MODE else production_text
+
+
 def configure_page():
-    st.set_page_config(page_title="GBK Driver Insights Suite", layout="wide")
+    st.set_page_config(
+        page_title=_ui_copy("GBK Driver Insights Suite", "Driver Insights Suite"),
+        layout="wide",
+    )
     for k, v in {
         "uploaded_df_raw": None,
         "uploaded_df_num": None,
@@ -484,6 +504,8 @@ def configure_page():
         if k not in st.session_state:
             st.session_state[k] = v
     st.markdown(PAGE_STYLE, unsafe_allow_html=True)
+    if DEMO_MODE:
+        st.markdown(DEMO_PAGE_STYLE, unsafe_allow_html=True)
 
 
 NAME_MAP = {
@@ -495,6 +517,13 @@ NAME_MAP = {
     "C10": "Purchase Experience",
     "C11": "Brand Trust",
     "C12": "Retailer",
+}
+DEMO_NAME_MAP = {
+    "C11": "Trust",
+    "brand": "Group",
+    "brand_code": "Group Code",
+    "top_brand_name": "Top Group",
+    "ownership_brand_name": "Ownership Group",
 }
 BAR_COLORS = ["#F76362", "#C7D8E4", "#789FC0", "#F9BDBC", "#5E7486"]
 GBK_CHART_BG = "#334651"
@@ -537,9 +566,15 @@ METHOD_INFO = {
     "shap": {
         "title": "SHAP — Advanced Importance Check",
         "recommended": True,
-        "desc": (
-            "Use when you want a strong client-friendly read that can pick up curved relationships and "
-            "interactions. It ranks predictors by how much they change the model's prediction on average."
+        "desc": _ui_copy(
+            (
+                "Use when you want a strong client-friendly read that can pick up curved relationships and "
+                "interactions. It ranks predictors by how much they change the model's prediction on average."
+            ),
+            (
+                "Use when you want a strong, easy-to-share read that can pick up curved relationships and "
+                "interactions. It ranks predictors by how much they change the model's prediction on average."
+            ),
         ),
         "note": "Mean |SHAP value| — average absolute impact on the outcome.",
     },
@@ -622,6 +657,13 @@ def _format_elapsed(seconds):
 
 
 def display_name(col):
+    if DEMO_MODE:
+        col_key = str(col)
+        if col_key in DEMO_NAME_MAP:
+            return DEMO_NAME_MAP[col_key]
+        lower_key = col_key.lower()
+        if lower_key in DEMO_NAME_MAP:
+            return DEMO_NAME_MAP[lower_key]
     return NAME_MAP.get(col, _auto_label(col))
 
 
@@ -1496,7 +1538,7 @@ def render_insights(target, driver_scores):
         f'<div class="gbk-insight gbk-insight-blue"><b>Next driver to review</b><br>'
         f"<b>{n2}</b> is also meaningfully connected to this outcome.</div>"
         f'<div class="gbk-insight"><b>Supporting context</b><br>'
-        f"<b>{n3}</b> and <b>{n4}</b> may help round out the client discussion, especially if they fit the business context.</div>"
+        f"<b>{n3}</b> and <b>{n4}</b> may help round out the {_ui_copy('client discussion', 'results discussion')}, especially if they fit the business context.</div>"
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -1512,7 +1554,7 @@ def render_next_steps(target, driver_scores):
     n4 = names[3] if len(names) > 3 else n3
     steps = [
         f"<b>Lead with {names[0]}.</b> It has the strongest link with {t}.",
-        f"<b>Pressure-test {n2}.</b> Check whether it fits the client story and existing research.",
+        f"<b>Pressure-test {n2}.</b> Check whether it fits the {_ui_copy('client story', 'analysis story')} and existing research.",
         f"<b>Use {n3} and {n4} as supporting points.</b> They may matter for messaging, targeting, or product priorities.",
         "<b>Add business judgment.</b> Treat the ranking as decision support, not a standalone recommendation.",
     ]
@@ -1521,7 +1563,7 @@ def render_next_steps(target, driver_scores):
         for i, s in enumerate(steps)
     )
     st.markdown(
-        f'<div class="gbk-panel"><div class="gbk-panel-title">Suggested consultant next steps</div>{items}</div>',
+        f'<div class="gbk-panel"><div class="gbk-panel-title">{_ui_copy("Suggested consultant next steps", "Suggested next steps")}</div>{items}</div>',
         unsafe_allow_html=True,
     )
 
@@ -1938,11 +1980,15 @@ def run_analysis(
 
 def render_dashboard():
     configure_page()
+    hero_eyebrow = (
+        "" if DEMO_MODE else '<div class="gbk-eyebrow">GBK Toolbox</div>'
+    )
+    hero_title = _ui_copy("Driver<br>Insights Suite", "Driver Insights Suite")
     st.markdown(
-        """
+        f"""
     <div class="gbk-hero">
-      <div class="gbk-eyebrow">GBK Toolbox</div>
-      <h1>Driver<br>Insights Suite</h1>
+      {hero_eyebrow}
+      <h1>{hero_title}</h1>
       <p>Use survey data to see which questions are most closely linked to the outcome you care about.<br>
       Work left to right: upload, choose the outcome, choose possible drivers, optionally compare groups, then run.</p>
     </div>
@@ -2118,7 +2164,7 @@ def render_dashboard():
         st.markdown(
             f'<div class="gbk-panel"><div class="gbk-panel-title gbk-step-title">Step 2 · Choose the possible drivers</div>'
             f'<div class="gbk-note"><b>Predictor variables</b> are the possible reasons behind the outcome. These are the survey questions, ratings, or metrics you want to compare as drivers. '
-            f"Choose variables the client can understand and potentially act on. Leave empty to use all detected numeric predictor columns."
+            f"Choose variables {_ui_copy('the client', 'stakeholders')} can understand and potentially act on. Leave empty to use all detected numeric predictor columns."
             f'<div class="gbk-mini-note">Click the field below and type a keyword to search long variable lists before choosing predictors.</div></div>'
             f"{x_hint}</div>",
             unsafe_allow_html=True,
@@ -2140,12 +2186,15 @@ def render_dashboard():
         # Step 3
         st.markdown(
             '<div class="gbk-panel"><div class="gbk-panel-title gbk-step-title">Step 3 · Compare groups (optional)</div>'
-            '<div class="gbk-note"><b>Subgroup analysis</b> runs the same driver analysis separately inside each group, such as brand, age range, region, market, or customer segment. '
+            f'<div class="gbk-note"><b>Subgroup analysis</b> runs the same driver analysis separately inside each group, such as {_ui_copy("brand, age range, region, market, or customer segment", "group, audience, region, market, or segment")}. '
             "Use it when you need to know whether different audiences have different drivers. Skip it for one overall ranking."
             '<div class="gbk-mini-note">If you turn this on, click the field and type a keyword to search group variables.</div></div></div>',
             unsafe_allow_html=True,
         )
-        use_sg = st.checkbox("Compare by brand, market, or segment", key="dash_use_sg")
+        use_sg = st.checkbox(
+            _ui_copy("Compare by brand, market, or segment", "Compare by group or segment"),
+            key="dash_use_sg",
+        )
         sg_var = None
         if use_sg:
             if compare_options:
@@ -2173,7 +2222,7 @@ def render_dashboard():
         st.markdown(
             '<div class="gbk-panel"><div class="gbk-panel-title">Optional · Control variables</div>'
             '<div class="gbk-note">Add covariates that should stay in the model but should not be ranked as drivers. '
-            "Use this when the reference analysis adjusts for brand, market, segment, or another grouping variable.</div></div>",
+            f"Use this when the reference analysis adjusts for {_ui_copy('brand, market, segment, or another grouping variable', 'group, market, segment, or another grouping variable')}.</div></div>",
             unsafe_allow_html=True,
         )
         excluded_for_controls = {y_selected, sg_var, *x_vars}
@@ -2484,7 +2533,7 @@ def render_dashboard():
                 st.warning(warning)
             with st.expander("Detailed score export"):
                 st.markdown(
-                    '<div class="gbk-mini-note">Use this table for QA, appendices, or deeper method review. The chart above is the simpler consultant view.</div>',
+                    f'<div class="gbk-mini-note">{_ui_copy("Use this table for QA, appendices, or deeper method review. The chart above is the simpler consultant view.", "Use this table for QA, appendices, or deeper method review. The chart above is the simpler summary view.")}</div>',
                     unsafe_allow_html=True,
                 )
                 st.dataframe(_display_table(result["export_table"]), width="stretch")
@@ -2529,26 +2578,39 @@ def render_dashboard():
             controls_note = (
                 ", ".join(display_name(c) for c in result.get("controls", [])) or "None"
             )
+            subgroup_name = display_name(result["sg_var"])
             st.markdown(
-                f'<div class="gbk-panel"><div class="gbk-panel-title">Compare by · {_auto_label(result["sg_var"])}</div>'
-                f'<div class="gbk-note">Each section repeats the same outcome and predictor setup within one <b>{_auto_label(result["sg_var"])}</b> group. '
-                f"Use this view to see where recommendations should change by audience, brand, or segment. <b>Controls:</b> {controls_note}.</div></div>",
+                f'<div class="gbk-panel"><div class="gbk-panel-title">Compare by · {subgroup_name}</div>'
+                f'<div class="gbk-note">Each section repeats the same outcome and predictor setup within one <b>{subgroup_name}</b> group. '
+                f"Use this view to see where recommendations should change by {_ui_copy('audience, brand, or segment', 'audience, group, or segment')}. <b>Controls:</b> {controls_note}.</div></div>",
                 unsafe_allow_html=True,
             )
             client_style_table = _client_style_shapley_table(
                 result["subgroup_export_table"]
             )
             if client_style_table is not None:
-                with st.expander("Client-style Shapley / LMG table", expanded=True):
+                with st.expander(
+                    _ui_copy(
+                        "Client-style Shapley / LMG table",
+                        "Delivery-style Shapley / LMG table",
+                    ),
+                    expanded=True,
+                ):
                     st.markdown(
-                        '<div class="gbk-mini-note">Use *_sum100 or *_index for the client Excel left block, and *_average100 for the right block.</div>',
+                        f'<div class="gbk-mini-note">{_ui_copy("Use *_sum100 or *_index for the client Excel left block, and *_average100 for the right block.", "Use *_sum100 or *_index for the left block, and *_average100 for the right block.")}</div>',
                         unsafe_allow_html=True,
                     )
                     st.dataframe(_display_table(client_style_table), width="stretch")
                     render_table_download(
-                        "Download Client-Style Shapley Table CSV",
+                        _ui_copy(
+                            "Download Client-Style Shapley Table CSV",
+                            "Download Delivery-Style Shapley Table CSV",
+                        ),
                         client_style_table,
-                        "client_style_shapley_table.csv",
+                        _ui_copy(
+                            "client_style_shapley_table.csv",
+                            "delivery_style_shapley_table.csv",
+                        ),
                         dependent_variable=result["target"],
                     )
             active_methods = get_active_chart_methods(
